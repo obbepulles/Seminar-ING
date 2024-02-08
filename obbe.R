@@ -42,13 +42,12 @@ first_utilization <- data %>%
   #select(`Used amount`)
 
   
- hist(first_utilization$`Used amount`)
+hist(first_utilization$`Used amount`)
 
 #Filter out constant U_t's
 filtered_df <- data %>%
   group_by(Client) %>%
   filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 1)) 
-  
 
 lagged_use_filtered <- filtered_df %>% 
   group_by(Client) %>%
@@ -69,7 +68,8 @@ num_single <- data %>% group_by(Client) %>% filter(n() == 1) %>% summarise(numCl
 p <- as.numeric((num_clients - num_clients_filter + num_single$n) / (num_clients - num_single$n))
 
 #Autocorrelation U_t 
-autoCorr <- filtered_df %>% group_by(Client) %>% summarise(Autocorrelation = acf(`Used amount`, plot = FALSE)$acf[2])
+autoCorr <- filtered_df %>% group_by(Client) %>% 
+              summarise(Autocorrelation = acf(`Used amount`, plot = FALSE)$acf[2])
 summary(autoCorr[2])
 hist(autoCorr$Autocorrelation)
 
@@ -78,6 +78,28 @@ lagged_use_filtered <- lagged_use_filtered %>% filter(!is.na(dU))
 autoCorrdU <- lagged_use_filtered %>% group_by(Client) %>% summarise(Autocorrelation = acf(dU, plot = FALSE)$acf[2])
 summary(autoCorrdU[2])
 hist(autoCorrdU$Autocorrelation)
+
+pcaf_pvals <- rep(0,11)
+for(i in 1:11){
+  pacf_results <- filtered_df %>%
+    group_by(Client) %>%
+    summarize(PACF = list(pacf(`Used amount`, plot = FALSE)$acf[i]))
+  corls <- as.numeric(pacf_results$PACF)
+  pcaf_pvals[i] <- t.test(x = corls, alternative = "two.sided")$p.value
+  hist(corls)
+  Sys.sleep(4)
+}
+
+# arma_results <- filtered_df %>% group_by(Client) %>%
+#                   summarize(ARMA = list(arimaorder(auto.arima(`Used amount`, ic = 'aic'))))
+# 
+# arimasum <- c(0,0,0)
+# for(i in 1:length(arma_results$Client)){
+#   arimasum <- arimasum + (as.numeric(arma_results$ARMA[i][[1]]))
+# }
+# arimasum <- arimasum / length(arma_results$Client)
+
+
 
 #(1) We see two types of clients:
 #       type 1: Use credit line once, don't touch again (~20% of clients)
@@ -113,8 +135,8 @@ modeldata <- na.omit(as.data.frame(cbind(Y,X)))
 
 
 #ARMA?
-#auto.arima(X, ic = "bic")
-#arima(X, order = c(1,0,0))
+#a <- auto.arima(modeldata$X, ic = "aic")
+#arima(Y, order = c(1,0,0))
 
 tobit_model <- censReg(Y ~ X, left = 0, right = 1, data = modeldata)
 summary(tobit_model)
@@ -244,6 +266,33 @@ tobit_model_covid <- censReg(data = lag_nonconst_covid, `Lag used` ~ `Used amoun
 summary(tobit_model_covid)
 
 
+########################################################################
+#calculate probability of cancelling early
+non_cancel_matured <- data %>% group_by(Client) %>% 
+                        filter((is.na(last(`Cancellation date`))) & (last(`Reporting date`) == first(`Maturity date`))) %>%
+                          summarize(ind = n_distinct(Client)) %>%
+                            summarize(ncm = sum(ind))
+cancel <- data %>% group_by(Client) %>% 
+  filter(!is.na(last(`Cancellation date`))) %>%
+  summarize(ind = n_distinct(Client)) %>%
+  summarize(ncm = sum(ind))                  
 
+non_matured <- data %>% group_by(Client) %>% 
+  filter((is.na(last(`Cancellation date`))) & (last(`Reporting date`) != first(`Maturity date`))) %>%
+  summarize(ind = n_distinct(Client)) %>%
+  summarize(ncm = sum(ind))
+p_cancel <- (cancel / (non_cancel_matured + cancel))[[1]]
+########################################################################
+#Calculate probability of being type 1 (constant utilization)
 
-
+non_single_utilization <- data %>% group_by(Client) %>%
+                            filter(length(`Used amount`) > 1)
+n_non_single_const <- non_single_utilization %>% group_by(Client) %>%
+                          filter(n_distinct(`Used amount`) == 1) %>%
+                            summarize(ind = n_distinct(Client)) %>% summarize(n = sum(ind))
+n_non_single_var <- non_single_utilization %>% group_by(Client) %>%
+                      filter(n_distinct(`Used amount`) > 1) %>%
+                        summarize(ind = n_distinct(Client)) %>% summarize(n = sum(ind))
+n_single <- 1200 - n_non_single_const - n_non_single_var
+p_typeone <- (n_non_single_var / (n_non_single_const + n_non_single_var))[[1]]
+########################################################################
