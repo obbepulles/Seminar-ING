@@ -4,6 +4,7 @@ library('moments')
 library('ggplot2')
 library('ggpubr')
 library("mixR")
+library('forecast')
 
 data <- readxl::read_xlsx("hypothetical_data_set.xlsx",2, skip = 1)
 data <- data[,2:9]
@@ -11,8 +12,12 @@ data$`Reporting date` <- as.Date(data$`Reporting date`, "%d-%m-%Y")
 data$`Maturity date` <- as.Date(data$`Maturity date`, "%d-%m-%Y")
 data$`Cancellation date` <- as.Date(data$`Cancellation date`, "%d-%m-%Y")
 rate_data <- readxl::read_xlsx("hypothetical_data_set.xlsx",1, skip = 1, range = "H2:M122")
+ftp_data <- readxl::read_xlsx("hypothetical_data_set.xlsx",1, skip = 1, range = "A2:F122")
+
+
 data <- data %>% mutate(month_year = format(`Reporting date`, "%m-%Y")) 
 rate_data <- rate_data %>% mutate(month_year = format(`Date`, "%m-%Y")) 
+ftp_data <- ftp_data %>% mutate(month_year = format(`Date`, "%m-%Y"))
 
 merged_df <- inner_join(data, rate_data, by = "month_year")
 data <- merged_df[,-9]
@@ -42,8 +47,8 @@ first_utilization <- data %>%
 #Filter out constant U_t's
 filtered_df <- data %>%
   group_by(Client) %>%
-  filter(length(unique(`Used amount`)) > 1) %>%
-  ungroup()
+  filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 1)) 
+  
 
 lagged_use_filtered <- filtered_df %>% 
   group_by(Client) %>%
@@ -107,6 +112,10 @@ X <- lag_df$`Lag used`[1:38567]
 modeldata <- na.omit(as.data.frame(cbind(Y,X)))
 
 
+#ARMA?
+#auto.arima(X, ic = "bic")
+#arima(X, order = c(1,0,0))
+
 tobit_model <- censReg(Y ~ X, left = 0, right = 1, data = modeldata)
 summary(tobit_model)
 error <- modeldata$Y - modeldata$X * tobit_model$estimate[2] - tobit_model$estimate[1]
@@ -142,9 +151,10 @@ abline(v =modes(density(means$sds^2))$x)
 abline(v = 0)
 
 #Plot some clients utilization over time
-dataSubset <- filtered_df %>% filter(Client >= 0 & Client < 5)
+for(i in 0:(2000/5)){
+dataSubset <- lagged_use %>% filter(Client >= 345 & Client < 350)
 
-plot <- ggplot(dataSubset, aes(x = as.Date(`Reporting date`,"%d-%m-%Y"), y = `dU`, group = Client, color = as.factor(Client))) +
+plot <- ggplot(dataSubset, aes(x = as.Date(`Reporting date`,"%d-%m-%Y"), y = `Used amount`, group = Client, color = as.factor(Client))) +
   geom_line() +
   geom_point() +
   labs(title = "Utilization Time Series for a subset of clients",
@@ -152,7 +162,8 @@ plot <- ggplot(dataSubset, aes(x = as.Date(`Reporting date`,"%d-%m-%Y"), y = `dU
        y = "Used Amount") +
   theme_minimal()
 print(plot)
-
+Sys.sleep(4)
+}
 
 #Model the variance with mixR mixed weibulls, performs best in all 3 cirteria
 x <- means$sds^2
@@ -201,7 +212,6 @@ mod1_weibull
 plot(mod1_weibull)
 
 
-
 lag_nonconst <- data_nonconst %>% group_by(Client) %>% mutate(`Lag used` = lag(`Used amount`))
 Y <- lag_nonconst$`Used amount`
 X <- lag_nonconst$`Lag used`
@@ -215,7 +225,7 @@ lag_nonconst <- cbind(lag_nonconst, error)
 qqnorm(y = error)
 qqline(y = error, col = 2)
 
-#Error analysis
+#Error analysis of tobit model
 c6 <- (lag_nonconst %>% group_by(Client) %>% mutate(vars = var(`Used amount`)) %>% slice(1))
 plot(hist(c6$vars))
 
@@ -224,12 +234,16 @@ mod2_weibull <- mixfit(x, ncomp = 3, family = 'gamma', max_iter = 10000)
 mod2_weibull
 plot(mod2_weibull)
 
-covid_date <- as.Date("01-3-2020", "%d-%m-%Y")
 
 #analyse if covid had an effect
+covid_date <- as.Date("01-3-2020", "%d-%m-%Y")
 lag_nonconst_covid <- lag_nonconst %>% mutate(covid = if_else(`Reporting date` >= covid_date,1,0))
 
-#No interaction between utiization and euribor / covid
+#We observe no interaction between utiization and euribor / covid
 tobit_model_covid <- censReg(data = lag_nonconst_covid, `Lag used` ~ `Used amount` + covid + `6M` + `1Y` + `3Y` + `5Y` + `10Y`)
 summary(tobit_model_covid)
+
+
+
+
 
