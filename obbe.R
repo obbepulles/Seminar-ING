@@ -37,12 +37,11 @@ hist(data$`Used amount`, freq = FALSE)
 
 #Initial use seems to follow uniform distr
 first_utilization <- data %>%
-  group_by(Client) %>%
-  slice(1) #%>%
-  #select(`Used amount`)
+  group_by(Client) %>% summarize(first(`Used amount`))
+
 
   
-hist(first_utilization$`Used amount`)
+hist(first_utilization$`first(\`Used amount\`)`, main = "Histogram of first utilization in a contract", col = 'lightblue', xlab = "Used amount as fraction")
 
 #Filter out constant U_t's
 filtered_df <- data %>%
