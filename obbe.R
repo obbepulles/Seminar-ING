@@ -60,11 +60,11 @@ kurtosis(na.omit(lagged_use_filtered$dU))
 #How many clients use the credit line more than once?
 num_clients_filter <- filtered_df %>% summarise(NumClients = n_distinct(Client))
 num_clients <- data %>% summarise(numClients = n_distinct(Client))
-num_clients - num_clients_filter
+#num_clients - num_clients_filter
 #Single observation clients
 num_single <- data %>% group_by(Client) %>% filter(n() == 1) %>% summarise(numClients = n_distinct(Client)) %>% count(numClients)
 #Estimated percentage of credit line users
-p <- as.numeric((num_clients - num_clients_filter + num_single$n) / (num_clients - num_single$n))
+#p <- as.numeric((num_clients - num_clients_filter + num_single$n) / (num_clients - num_single$n))
 
 #Autocorrelation U_t 
 autoCorr <- filtered_df %>% group_by(Client) %>% 
@@ -85,8 +85,8 @@ for(i in 1:11){
     summarize(PACF = list(pacf(`Used amount`, plot = FALSE)$acf[i]))
   corls <- as.numeric(pacf_results$PACF)
   pcaf_pvals[i] <- t.test(x = corls, alternative = "two.sided")$p.value
-  hist(corls)
-  Sys.sleep(4)
+  #hist(corls)
+  #Sys.sleep(4)
 }
 
 # arma_results <- filtered_df %>% group_by(Client) %>%
@@ -119,7 +119,7 @@ for(i in 1:11){
 
 filtered_df <- data %>%
   group_by(Client) %>%
-  filter(n_distinct(`Used amount`) > 1) %>%
+  filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 1)) %>%
   ungroup()
 lagged_use_filtered <- filtered_df %>% 
   group_by(Client) %>%
@@ -172,19 +172,19 @@ abline(v =modes(density(means$sds^2))$x)
 abline(v = 0)
 
 #Plot some clients utilization over time
-for(i in 0:(2000/5)){
-dataSubset <- lagged_use %>% filter(Client >= 345 & Client < 350)
-
-plot <- ggplot(dataSubset, aes(x = as.Date(`Reporting date`,"%d-%m-%Y"), y = `Used amount`, group = Client, color = as.factor(Client))) +
-  geom_line() +
-  geom_point() +
-  labs(title = "Utilization Time Series for a subset of clients",
-       x = "Client",
-       y = "Used Amount") +
-  theme_minimal()
-print(plot)
-Sys.sleep(4)
-}
+# for(i in 0:(2000/5)){
+# dataSubset <- lagged_use %>% filter(Client >= 345 & Client < 350)
+# 
+# plot <- ggplot(dataSubset, aes(x = as.Date(`Reporting date`,"%d-%m-%Y"), y = `Used amount`, group = Client, color = as.factor(Client))) +
+#   geom_line() +
+#   geom_point() +
+#   labs(title = "Utilization Time Series for a subset of clients",
+#        x = "Client",
+#        y = "Used Amount") +
+#   theme_minimal()
+# print(plot)
+# Sys.sleep(4)
+# }
 
 #Model the variance with mixR mixed weibulls, performs best in all 3 cirteria
 x <- means$sds^2
@@ -295,3 +295,39 @@ n_non_single_var <- non_single_utilization %>% group_by(Client) %>%
 n_single <- 1200 - n_non_single_const - n_non_single_var
 p_typeone <- (n_non_single_var / (n_non_single_const + n_non_single_var))[[1]]
 ########################################################################
+
+filtered_df <- data %>%
+  group_by(Client) %>%
+  filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 23)) 
+
+param_grid <- as.matrix(unname(expand.grid(p = 0:2, d = 0:1, q = 0:2)))
+aic_vector <- rep(0,18)
+n <- filtered_df %>% summarize(x = n_distinct(Client))
+arima_model <- rep(0,18)
+error_counter <- rep(0,18)
+
+for(i in 1:(length(n$Client))){
+ util <- filtered_df %>% filter(Client == n$Client[i])
+ util <- util$`Used amount` + 1
+ for(j in 1:18){
+   
+   tryCatch(
+     {
+       arima_model[j] <- AIC(arima(util, order = param_grid[j, ]))
+     },
+     error = function(e) {
+       error_counter[j] <<- error_counter[j] + 1
+       NA
+     }
+   )
+   }
+ 
+ aic_vector <- aic_vector + arima_model
+ 
+}
+
+#AR(1) model best on average
+aic_vector <- aic_vector / (length(n$Client) - error_counter)
+pos <- param_grid[which(aic_vector == min(aic_vector)), ]
+
+
