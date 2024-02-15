@@ -11,6 +11,7 @@ data <- data[,2:9]
 data$`Reporting date` <- as.Date(data$`Reporting date`, "%d-%m-%Y")
 data$`Maturity date` <- as.Date(data$`Maturity date`, "%d-%m-%Y")
 data$`Cancellation date` <- as.Date(data$`Cancellation date`, "%d-%m-%Y")
+data$`Start date` <- as.Date(data$`Start date`, "%d-%m-%Y")
 rate_data <- readxl::read_xlsx("hypothetical_data_set.xlsx",1, skip = 1, range = "H2:M122")
 ftp_data <- readxl::read_xlsx("hypothetical_data_set.xlsx",1, skip = 1, range = "A2:F122")
 
@@ -43,28 +44,24 @@ first_utilization <- data %>%
   
 hist(first_utilization$`first(\`Used amount\`)`, main = "Histogram of first utilization in a contract", col = 'lightblue', xlab = "Used amount as fraction")
 
+
 #Filter out constant U_t's
 filtered_df <- data %>%
   group_by(Client) %>%
-  filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 1)) 
+  filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 23)) %>%
+  ungroup()
 
 lagged_use_filtered <- filtered_df %>% 
   group_by(Client) %>%
   mutate(dU = `Used amount` - lag(`Used amount`))
-hist((lagged_use_filtered$`dU`), freq = FALSE)
-plot(density(na.omit(lagged_use_filtered$dU)))
-qqnorm(lagged_use_filtered$dU)
-qqline(lagged_use_filtered$dU)
-kurtosis(na.omit(lagged_use_filtered$dU))
 
-#How many clients use the credit line more than once?
-num_clients_filter <- filtered_df %>% summarise(NumClients = n_distinct(Client))
-num_clients <- data %>% summarise(numClients = n_distinct(Client))
-#num_clients - num_clients_filter
-#Single observation clients
-num_single <- data %>% group_by(Client) %>% filter(n() == 1) %>% summarise(numClients = n_distinct(Client)) %>% count(numClients)
-#Estimated percentage of credit line users
-#p <- as.numeric((num_clients - num_clients_filter + num_single$n) / (num_clients - num_single$n))
+#--- NOT RELEVANT ANYMORE AS WE KNOW AR(1) IS BETTER THAN ARIMA(0,1,0)
+# hist((lagged_use_filtered$`dU`), freq = FALSE)
+# summary(lagged_use_filtered$dU)
+# plot(density(na.omit(lagged_use_filtered$dU)))
+# qqnorm(lagged_use_filtered$dU)
+# qqline(lagged_use_filtered$dU)
+# kurtosis(na.omit(lagged_use_filtered$dU))
 
 #Autocorrelation U_t 
 autoCorr <- filtered_df %>% group_by(Client) %>% 
@@ -77,6 +74,10 @@ lagged_use_filtered <- lagged_use_filtered %>% filter(!is.na(dU))
 autoCorrdU <- lagged_use_filtered %>% group_by(Client) %>% summarise(Autocorrelation = acf(dU, plot = FALSE)$acf[2])
 summary(autoCorrdU[2])
 hist(autoCorrdU$Autocorrelation)
+qqnorm(autoCorrdU$Autocorrelation)
+qqline(autoCorrdU$Autocorrelation)
+random_t <- mean(autoCorrdU$Autocorrelation) + sd(autoCorrdU$Autocorrelation)*rt(800,df = length(autoCorrdU$Autocorrelation))
+qqnorm(random_t)
 
 pcaf_pvals <- rep(0,11)
 for(i in 1:11){
@@ -89,17 +90,6 @@ for(i in 1:11){
   #Sys.sleep(4)
 }
 
-# arma_results <- filtered_df %>% group_by(Client) %>%
-#                   summarize(ARMA = list(arimaorder(auto.arima(`Used amount`, ic = 'aic'))))
-# 
-# arimasum <- c(0,0,0)
-# for(i in 1:length(arma_results$Client)){
-#   arimasum <- arimasum + (as.numeric(arma_results$ARMA[i][[1]]))
-# }
-# arimasum <- arimasum / length(arma_results$Client)
-
-
-
 #(1) We see two types of clients:
 #       type 1: Use credit line once, don't touch again (~20% of clients)
 #       type 2: Use credit line more often, high autocorrelation (Tobit model?, ~80% of clients)
@@ -107,7 +97,7 @@ for(i in 1:11){
 #(3) No ACF in dU
 #(4) For type 2 clients, dU seems to follow a normal distr around (-0.2;0.2) but has thick tails
 #    Ideas: Mixture of normals / Truncated normal + other distr for tails
-#    Problem: U in [0,1], thin tails make sense, could be a result of TOBIT
+#    Problem: U in [0,1], thick tails make sense, could be a result of TOBIT (LIKELY!!!)
 
 #DGP idea: 
 #(1) U_0 ~ Unif[0,1]
@@ -119,7 +109,7 @@ for(i in 1:11){
 
 filtered_df <- data %>%
   group_by(Client) %>%
-  filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 1)) %>%
+  filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 5)) %>%
   ungroup()
 lagged_use_filtered <- filtered_df %>% 
   group_by(Client) %>%
@@ -132,10 +122,6 @@ Y <- lag_df$`Used amount`[1:38567]
 X <- lag_df$`Lag used`[1:38567]
 modeldata <- na.omit(as.data.frame(cbind(Y,X)))
 
-
-#ARMA?
-#a <- auto.arima(modeldata$X, ic = "aic")
-#arima(Y, order = c(1,0,0))
 
 tobit_model <- censReg(Y ~ X, left = 0, right = 1, data = modeldata)
 summary(tobit_model)
@@ -223,6 +209,12 @@ num_clients <- data_fin_can %>% summarise(numClients = n_distinct(Client))
 #Probability of using line constantly (type 2)
 p <- num_clients_filter$NumClients / sum(num_clients$numClients)
 
+
+
+data_nonconst <- data_fin_can %>%
+  group_by(Client) %>%
+  filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 11)) %>%
+  ungroup()
 c5 <- data_nonconst %>% group_by(Client) %>% mutate(vars = var(`Used amount`)) %>% slice(1)
 plot(density(c5$vars))
 
@@ -238,19 +230,20 @@ Y <- lag_nonconst$`Used amount`
 X <- lag_nonconst$`Lag used`
 modeldata <- (as.data.frame(cbind(Y,X)))
 
-tobit_model <- censReg(X ~ Y, left = 0, right = 1, data = modeldata)
+tobit_model <- censReg(Y ~ X, left = 0, right = 1, data = modeldata)
 summary(tobit_model)
 error <- modeldata$X - modeldata$Y * tobit_model$estimate[2] - tobit_model$estimate[1]
-lag_nonconst <- cbind(lag_nonconst, error)
+lag_nonconst <- cbind(lag_nonconst, "Error" = error)
+t.test((na.omit(lag_nonconst$Error)))
 
 qqnorm(y = error)
 qqline(y = error, col = 2)
 
 #Error analysis of tobit model
-c6 <- (lag_nonconst %>% group_by(Client) %>% mutate(vars = var(`Used amount`)) %>% slice(1))
+c6 <- lag_nonconst %>% group_by(Client) %>% summarize(vars = var(na.omit(Error))) 
 plot(hist(c6$vars))
 
-x <- (c6$vars)
+x <- sqrt(c6$vars)
 mod2_weibull <- mixfit(x, ncomp = 3, family = 'gamma', max_iter = 10000)
 mod2_weibull
 plot(mod2_weibull)
@@ -295,7 +288,14 @@ n_non_single_var <- non_single_utilization %>% group_by(Client) %>%
 n_single <- 1200 - n_non_single_const - n_non_single_var
 p_typeone <- (n_non_single_var / (n_non_single_const + n_non_single_var))[[1]]
 ########################################################################
+#Check relation between risk factors using scatterplots, later extend to OLS/etc
+cancelled_summary <- data %>% filter(!is.na(`Cancellation date`)) %>% filter(`Reporting date` == `Cancellation date`)
+fraction <- cancelled_summary %>% group_by(Client) %>% summarize(fraction = ((as.numeric(`Cancellation date`)- as.numeric(`Start date`)) / (as.numeric(`Maturity date`) - as.numeric(`Start date`))))
+mean_util <- data %>% filter(!is.na(`Cancellation date`)) %>% group_by(Client) %>% summarize(mean = mean(`Used amount`))
+plot(y = fraction$fraction, x = cancelled_summary$`Used amount`)
+plot(y = fraction$fraction, x = mean_util$mean)
 
+########################################################################
 filtered_df <- data %>%
   group_by(Client) %>%
   filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 23)) 
@@ -308,19 +308,20 @@ error_counter <- rep(0,18)
 
 for(i in 1:(length(n$Client))){
  util <- filtered_df %>% filter(Client == n$Client[i])
- util <- util$`Used amount` + 1
+ util <- util$`Used amount`
  for(j in 1:18){
    
    tryCatch(
      {
-       arima_model[j] <- AIC(arima(util, order = param_grid[j, ]))
+       arima_model[j] <- AIC(arima(util, order = param_grid[j, ], method = "ML"))
+       
      },
      error = function(e) {
        error_counter[j] <<- error_counter[j] + 1
        NA
      }
    )
-   }
+ }
  
  aic_vector <- aic_vector + arima_model
  
@@ -329,5 +330,6 @@ for(i in 1:(length(n$Client))){
 #AR(1) model best on average
 aic_vector <- aic_vector / (length(n$Client) - error_counter)
 pos <- param_grid[which(aic_vector == min(aic_vector)), ]
+
 
 
