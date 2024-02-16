@@ -6,7 +6,7 @@
 #---    cancel:     Date class in DD-MM-YYYY format, cancellation date of contract
 #---    euri:       Time series data of available Euribor rate 
 #---    euri_sim:   Time series data of simulated Euribor rate (dates are after last observation of 'euri' data)
-#---    ftp:        Time series data of available FTP data   
+#---    ftp:        Time series data of available FTP data for 1 year maturtiy   
 #---    p:          Probability of being a type I client (non-const utilization)
 #---    pool_coef:  vector of coefficients of pooled TOBIT result from main file
 
@@ -42,10 +42,27 @@ hist_sim_option_cost_simple <- function(ts, start, mat, cancel, euri, euri_sim, 
     }
   
   }
-
-  return(ts_sim)
+  
+  #NEED TO DO SOME DATAFRAME MANIP HERE STILL
+  ftp_0 <- ftp[start] + 0.0001 * (T / 12 - 1)
+  
+  if(r / 12 >= 1){
+    ftp_tau <- ftp[cancel] + 0.0001 * (r / 12 - 1)
+  }
+  else{
+    ftp_tau <- ftp[cancel] - 0.0001 * (1 - r / 12)
+  }
+  
+  dFTP_tau <- ftp_tau - ftp_0
+  
+  
+  option_cost <- dFTP_tau * sum(ts_sim * (((1 + euri_sim) ^ (1 / 12)) - 1))
+  
+  return(option_cost)
 }
 
+
+simulate_euribor_rate()
 
 simulate_utilization_ts_pool <- function(ts_sim, ts, r, tau, pool_coef){
   ts_sim[1:2] <- ts[(tau-1):tau]

@@ -20,8 +20,8 @@ data <- data %>% mutate(month_year = format(`Reporting date`, "%m-%Y"))
 rate_data <- rate_data %>% mutate(month_year = format(`Date`, "%m-%Y")) 
 ftp_data <- ftp_data %>% mutate(month_year = format(`Date`, "%m-%Y"))
 
-merged_df <- inner_join(data, rate_data, by = "month_year")
-data <- merged_df[,-9]
+merged_df <- inner_join(data, rate_data, ftp_data, by = "month_year")
+data <- merged_df[,c(-9,-15,-16)]
 
 #calculated dU_t
 lagged_use <- data %>% 
@@ -107,7 +107,6 @@ for(i in 1:11){
 #     (ii)   0              , if phi * U_{t-1} + eps_t <= 0
 #     (iii)  phi * U_{t-1} + eps_t, otherwise
 
-cancelled_data <- data %>% group_by(Client) %>% filter(!is.na(`Cancellation date`))
 
 filtered_df <- data %>%
   group_by(Client) %>%
@@ -160,19 +159,19 @@ abline(v =modes(density(means$sds^2))$x)
 abline(v = 0)
 
 #Plot some clients utilization over time
-for(i in 0:120){
-dataSubset <- cancelled_data %>% filter(Client >= 10*i & Client < (10*(i+1)))
-
-plot <- ggplot(dataSubset, aes(x = as.Date(`Reporting date`,"%d-%m-%Y"), y = `Used amount`, group = Client, color = as.factor(Client))) +
-  geom_line() +
-  geom_point() +
-  labs(title = "Utilization Time Series for a subset of clients",
-       x = "Client",
-       y = "Used Amount") +
-  theme_minimal()
-print(plot)
-Sys.sleep(4)
-}
+# for(i in 0:120){
+# dataSubset <- cancelled_data %>% filter(Client >= 10*i & Client < (10*(i+1)))
+# 
+# plot <- ggplot(dataSubset, aes(x = as.Date(`Reporting date`,"%d-%m-%Y"), y = `Used amount`, group = Client, color = as.factor(Client))) +
+#   geom_line() +
+#   geom_point() +
+#   labs(title = "Utilization Time Series for a subset of clients",
+#        x = "Client",
+#        y = "Used Amount") +
+#   theme_minimal()
+# print(plot)
+# Sys.sleep(4)
+# }
 
 #Model the variance with mixR mixed weibulls, performs best in all 3 cirteria
 x <- means$sds^2
@@ -333,6 +332,8 @@ for(i in 1:(length(n$Client))){
 aic_vector <- aic_vector / (length(n$Client) - error_counter)
 pos <- param_grid[which(aic_vector == min(aic_vector)), ]
 
+
+cancelled_data <- data %>% group_by(Client) %>% filter(!is.na(`Cancellation date`))
 
 filtered_df <- (data %>%
   group_by(Client) %>%
