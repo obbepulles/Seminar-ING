@@ -5,6 +5,8 @@ library('ggplot2')
 library('ggpubr')
 library("mixR")
 library('forecast')
+library("sn")
+library('vars')
 
 data <- readxl::read_xlsx("hypothetical_data_set.xlsx",2, skip = 1)
 data <- data[,2:9]
@@ -20,8 +22,9 @@ data <- data %>% mutate(month_year = format(`Reporting date`, "%m-%Y"))
 rate_data <- rate_data %>% mutate(month_year = format(`Date`, "%m-%Y")) 
 ftp_data <- ftp_data %>% mutate(month_year = format(`Date`, "%m-%Y"))
 
-merged_df <- inner_join(data, rate_data, ftp_data, by = "month_year")
-data <- merged_df[,c(-9,-15,-16)]
+merged_df <- inner_join(data, rate_data, by = "month_year")
+merged_df <- inner_join(merged_df, ftp_data, by = "month_year")
+data <- merged_df[,c(-9,-10,-16)]
 
 #calculated dU_t
 lagged_use <- data %>% 
@@ -255,7 +258,7 @@ covid_date <- as.Date("01-3-2020", "%d-%m-%Y")
 lag_nonconst_covid <- lag_nonconst %>% mutate(covid = if_else(`Reporting date` >= covid_date,1,0))
 
 #We observe no interaction between utiization and euribor / covid
-tobit_model_covid <- censReg(data = lag_nonconst_covid, `Lag used` ~ `Used amount` + covid + `6M` + `1Y` + `3Y` + `5Y` + `10Y`)
+tobit_model_covid <- censReg(data = lag_nonconst_covid, `Lag used` ~ `Used amount` + covid + `6M` + `1Y` + `3Y.x` + `5Y.x` + `10Y.x`)
 summary(tobit_model_covid)
 
 
@@ -337,25 +340,40 @@ cancelled_data <- data %>% group_by(Client) %>% filter(!is.na(`Cancellation date
 
 filtered_df <- (data %>%
   group_by(Client) %>%
-  filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 5)) %>% ungroup())[,1:7]
+  filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 1)) %>% ungroup())[,1:7]
 
 pooled_df <- filtered_df %>% group_by(Client) %>%
-  mutate(dU = lag(`Used amount`)) %>%
+  mutate(lU = lag(`Used amount`)) %>%
   ungroup()
-pooled_df <- pooled_df %>% filter(!is.na(dU))
-
-pool_coef <- coef(censReg(`Used amount` ~ dU, data = pooled_df, left = 0, right = 1))
+pooled_df <- pooled_df %>% filter(!is.na(lU))
+pooled_reg <- censReg(`Used amount` ~ lU, data = pooled_df, left = 0, right = 1)
+pool_coef <- coef(pooled_reg)
 
 clients <- unique(as.numeric(cancelled_data$Client))
 
+varmod <- VAR(ts(rate_data[,2:6]),p = 1)
+varcoef <- coef(varmod)
+forecast <- predict(varmod, n.ahead = 120)
+euri_sim <- forecast[["fcst"]][["X1Y"]]
+euri_sim <- euri_sim[,1]
+
+
+hs_costs <- rep(0,length(clients)) 
+count <- 1
+
 for(i in clients){
   client <- cancelled_data %>% filter(Client == i) 
-  sim <- hist_sim_option_cost_simple(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], client$`Cancellation date`[1], 1, 1, 1, 1, pool_coef)
+  hs_costs[count] <- hist_sim_option_cost_simple(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], client$`Cancellation date`[1], rate_data$`1Y`, euri_sim, ftp_data, 1, pool_coef)
   a <- length(client$`Used amount`)
-  ts <- c(client$`Used amount`, sim[3:length(sim)])
-  print(length(ts))
-  plot(ts, type = "l", col = "blue", ylim = c(0,1))
-  abline(v = a+1, col = "gray")
-  lines(seq(a + 1, length(ts)), ts[(a + 1):length(ts)], col = "red", type = "l")
-  Sys.sleep(3)
+  #ts <- c(client$`Used amount`, sim[3:length(sim)])
+  count <- count + 1
+  
+  #plot(ts, type = "l", col = "blue", ylim = c(0,1))
+  #abline(v = a+1, col = "gray")
+  #lines(seq(a + 1, length(ts)), ts[(a + 1):length(ts)], col = "red", type = "l")
 }
+
+
+
+hist(hs_costs , main = "Histogram of historical simulation option costs", xlab = "NPV Cost", col = 'green4')
+summary(hs_costs )
