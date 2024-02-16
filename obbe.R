@@ -107,6 +107,8 @@ for(i in 1:11){
 #     (ii)   0              , if phi * U_{t-1} + eps_t <= 0
 #     (iii)  phi * U_{t-1} + eps_t, otherwise
 
+cancelled_data <- data %>% group_by(Client) %>% filter(!is.na(`Cancellation date`))
+
 filtered_df <- data %>%
   group_by(Client) %>%
   filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 5)) %>%
@@ -158,19 +160,19 @@ abline(v =modes(density(means$sds^2))$x)
 abline(v = 0)
 
 #Plot some clients utilization over time
-# for(i in 0:(2000/5)){
-# dataSubset <- lagged_use %>% filter(Client >= 345 & Client < 350)
-# 
-# plot <- ggplot(dataSubset, aes(x = as.Date(`Reporting date`,"%d-%m-%Y"), y = `Used amount`, group = Client, color = as.factor(Client))) +
-#   geom_line() +
-#   geom_point() +
-#   labs(title = "Utilization Time Series for a subset of clients",
-#        x = "Client",
-#        y = "Used Amount") +
-#   theme_minimal()
-# print(plot)
-# Sys.sleep(4)
-# }
+for(i in 0:120){
+dataSubset <- cancelled_data %>% filter(Client >= 10*i & Client < (10*(i+1)))
+
+plot <- ggplot(dataSubset, aes(x = as.Date(`Reporting date`,"%d-%m-%Y"), y = `Used amount`, group = Client, color = as.factor(Client))) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Utilization Time Series for a subset of clients",
+       x = "Client",
+       y = "Used Amount") +
+  theme_minimal()
+print(plot)
+Sys.sleep(4)
+}
 
 #Model the variance with mixR mixed weibulls, performs best in all 3 cirteria
 x <- means$sds^2
@@ -332,4 +334,27 @@ aic_vector <- aic_vector / (length(n$Client) - error_counter)
 pos <- param_grid[which(aic_vector == min(aic_vector)), ]
 
 
+filtered_df <- (data %>%
+  group_by(Client) %>%
+  filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 5)) %>% ungroup())[,1:7]
 
+pooled_df <- filtered_df %>% group_by(Client) %>%
+  mutate(dU = lag(`Used amount`)) %>%
+  ungroup()
+pooled_df <- pooled_df %>% filter(!is.na(dU))
+
+pool_coef <- coef(censReg(`Used amount` ~ dU, data = pooled_df, left = 0, right = 1))
+
+clients <- unique(as.numeric(cancelled_data$Client))
+
+for(i in clients){
+  client <- cancelled_data %>% filter(Client == i) 
+  sim <- hist_sim_option_cost_simple(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], client$`Cancellation date`[1], 1, 1, 1, 1, pool_coef)
+  a <- length(client$`Used amount`)
+  ts <- c(client$`Used amount`, sim[3:length(sim)])
+  print(length(ts))
+  plot(ts, type = "l", col = "blue", ylim = c(0,1))
+  abline(v = a+1, col = "gray")
+  lines(seq(a + 1, length(ts)), ts[(a + 1):length(ts)], col = "red", type = "l")
+  Sys.sleep(3)
+}
