@@ -349,6 +349,8 @@ pooled_df <- pooled_df %>% filter(!is.na(lU))
 pooled_reg <- censReg(`Used amount` ~ lU, data = pooled_df, left = 0, right = 1)
 pool_coef <- coef(pooled_reg)
 
+cancelled_data <- cancelled_data %>% filter(`Maturity date` <= as.Date("31-12-2021", "%d-%m-%Y"))
+
 clients <- unique(as.numeric(cancelled_data$Client))
 
 varmod <- VAR(ts(rate_data[,2:6]),p = 1)
@@ -359,20 +361,21 @@ euri_sim <- euri_sim[,1]
 
 
 hs_costs <- rep(0,length(clients)) 
+hs_eos <- rep(0,length(clients))
 count <- 1
 
 for(i in clients){
   client <- cancelled_data %>% filter(Client == i) 
   hs_costs[count] <- hist_sim_option_cost_simple(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], client$`Cancellation date`[1], rate_data$`1Y`, euri_sim, ftp_data, 1, pool_coef)
-  a <- length(client$`Used amount`)
+  #a <- length(client$`Used amount`)
   #ts <- c(client$`Used amount`, sim[3:length(sim)])
   count <- count + 1
   
-  #plot(ts, type = "l", col = "blue", ylim = c(0,1))
-  #abline(v = a+1, col = "gray")
-  #lines(seq(a + 1, length(ts)), ts[(a + 1):length(ts)], col = "red", type = "l")
+  
+    
 }
 
 
 hist(hs_costs , main = "Histogram of historical simulation option costs", xlab = "NPV Cost", col = 'green4')
 summary(hs_costs )
+#check hs_costs vs maturity in years

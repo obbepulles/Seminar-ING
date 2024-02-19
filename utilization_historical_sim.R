@@ -43,6 +43,11 @@ hist_sim_option_cost_simple <- function(ts, start, mat, cancel, euri, euri_sim, 
   
   }
   
+  
+  #plot(c(ts,ts_sim[2:length(ts_sim)]), col = 'blue', type = 'l')
+  #lines(ts_sim[2:length(ts_sim)], col = 'red')
+  #Sys.sleep(4)
+  
   # #NEED TO DO SOME DATAFRAME MANIP HERE STILL
   start_ftp <- (ftp_data %>% filter(format(start, "%m-%Y") == month_year))[2]
   cancel_ftp <- (ftp_data %>% filter(format(cancel, "%m-%Y") == month_year))[2]
@@ -62,6 +67,7 @@ hist_sim_option_cost_simple <- function(ts, start, mat, cancel, euri, euri_sim, 
   
   option_cost <- dFTP_tau * sum(ts_sim * rates)
   print(option_cost)
+  
   
   return(option_cost[[1]])
 }
@@ -84,9 +90,14 @@ simulate_euribor_rate <- function(euribor, T, errors){
 
 simulate_utilization_ts_pool <- function(ts_sim, ts, r, tau, pool_coef){
   ts_sim[1:2] <- ts[(tau-1):tau]
+  
+  comb_ts <- na.omit(cbind(ts, lag(ts)))
+  sigmasq <- exp(pool_coef[3])^2
   if(r > 2){
     for(i in 3:r){
-      ts_sim[i] <- min(max(pool_coef[1] + ts_sim[i-1]*pool_coef[2],0),1)
+      c <- pool_coef[1] + ts_sim[i-1] * pool_coef[2]
+      ts_sim[i] <- min(max((c * (pnorm(1 - c, mean = 0, sd = sqrt(sigmasq)) - pnorm(-c,mean = 0, sd = sqrt(sigmasq))) + 1 - pnorm(1 - c, mean = 0, sd = sqrt(sigmasq))), 0), 1)
+      
     }
   }
   return(ts_sim)
@@ -107,12 +118,16 @@ simulate_utilization_ts <- function(ts_sim, ts, r, tau){
       coef_arima
     }
   )
+  
+  error <- comb_ts[,1] - coef_arima[1] - coef_arima[2]*comb_ts[,2]
+  sigmasq <- var(error)
   #need from t = tau-1 until T-1, tau-1 & tau are known
   ts_sim[1:2] <- ts[(tau-1):tau]
   #Simulate if necessary
   if(r > 2){
     for(i in 3:r){
-      ts_sim[i] <- min(max((coef_arima[1] + ts_sim[i-1] * coef_arima[2]), 0), 1)
+      c <- coef_arima[1] + ts_sim[i-1] * coef_arima[2]
+      ts_sim[i] <- min(max((c * (pnorm(1 - c, mean = 0, sd = sqrt(sigmasq)) - pnorm(-c,mean = 0, sd = sqrt(sigmasq))) + 1 - pnorm(1 - c, mean = 0, sd = sqrt(sigmasq))), 0), 1)
     }
   }
   return(ts_sim)
