@@ -62,7 +62,7 @@ hist_sim_option_cost_simple <- function(ts, start, mat, cancel, euri, euri_sim, 
   
   rates <-  c(euri,euri_sim)[cancel_pos:stop_pos]
   for(i in 1:length(rates)){
-    rates[i] <- (1 + rates[i]) ^ (-i / 12)
+    rates[i] <- (1 + rates[i]/12) ^ (-i)
   }
   
   option_cost <- dFTP_tau * sum(ts_sim * rates)

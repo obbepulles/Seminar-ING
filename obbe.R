@@ -369,13 +369,32 @@ for(i in clients){
   hs_costs[count] <- hist_sim_option_cost_simple(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], client$`Cancellation date`[1], rate_data$`1Y`, euri_sim, ftp_data, 1, pool_coef)
   #a <- length(client$`Used amount`)
   #ts <- c(client$`Used amount`, sim[3:length(sim)])
+  
   count <- count + 1
-  
-  
-    
 }
-
 
 hist(hs_costs , main = "Histogram of historical simulation option costs", xlab = "NPV Cost", col = 'green4')
 summary(hs_costs )
 #check hs_costs vs maturity in years
+
+npv_alpha <- sort(hs_costs)[ceiling(0.99*length(hs_costs))]
+eos <- rep(0, length(hs_costs))
+
+count <- 1
+for(i in clients){
+  client <- cancelled_data %>% filter(Client == i) 
+  ts <- client$`Used amount`[1:(length(client$`Used amount`) - 1)]
+  
+  start_pos <- as.numeric(rate_data %>% summarize(which(format(client$`Start date`[1], "%m-%Y") == month_year)))
+  cancel_pos <- as.numeric(rate_data %>% summarize(which(format(client$`Cancellation date`[1], "%m-%Y") == month_year)))
+  rates <- rate_data$`1Y`[(start_pos + 1):cancel_pos]
+  for(j in 1:length(rates)){
+    rates[j] <- (1 + rates[j]/12) ^ (-j)
+  }
+  
+  eos[count] <- npv_alpha / sum(rates * ts)
+  count <- count + 1
+}
+
+plot(sort(eos))
+summary(eos)
