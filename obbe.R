@@ -363,15 +363,19 @@ euri_sim <- euri_sim[,1]
 hs_costs <- rep(0,length(clients)) 
 hs_eos <- rep(0,length(clients))
 count <- 1
+client_var <- rep(0,length(clients))
 
 for(i in clients){
   client <- cancelled_data %>% filter(Client == i) 
   hs_costs[count] <- hist_sim_option_cost_simple(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], client$`Cancellation date`[1], rate_data$`1Y`, euri_sim, ftp_data, 1, pool_coef)
+  client_var[count] <- var(diff(client$`Used amount`))
+  
   count <- count + 1
+  
 }
 
 hist(hs_costs , main = "Histogram of historical simulation option costs", xlab = "NPV Cost", col = 'green4')
-summary(hs_costs )
+summary(hs_costs)
 #check hs_costs vs maturity in years
 
 sum_data_cancel <- cancelled_data %>% group_by(Client) %>% slice(1)  
@@ -422,6 +426,20 @@ ggplot(sum_data_cancel, aes(x = Client, y = `EOS`, color = factor(Maturity))) +
 ggplot(sum_data_cancel, aes(x = Maturity, y = `EOS`, color = factor(Maturity))) +
   geom_point() +
   labs(x = "Maturity", y = "EOS", color = "Maturity Length (Years)") +
+  theme_minimal()
+
+#---Check if variance determines option cost
+sum_data_cancel <- cbind(sum_data_cancel, client_var)
+names(sum_data_cancel)[21] <- "Client var"
+
+ggplot(sum_data_cancel, aes(x = `Client var`, y = `Option cost`, color = factor(Maturity))) +
+  geom_point() +
+  labs(x = "Client Var", y = "Option cost", color = "Maturity Length (Years)") +
+  theme_minimal()
+
+ggplot(sum_data_cancel, aes(x = `Client var`, y = `EOS`, color = factor(Maturity))) +
+  geom_point() +
+  labs(x = "Client var", y = "EOS", color = "Maturity Length (Years)") +
   theme_minimal()
 
 
