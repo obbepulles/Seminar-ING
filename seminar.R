@@ -240,25 +240,6 @@ lines(ftp_2y_ts, col = "black")
 lines(auto_arma_model$fitted, col = "cornflowerblue", lty = 2, lwd = 1.2)
 legend("bottomleft", legend = c("fitted value","actual value", "predicted value"), col = c("cornflowerblue","black", "cyan2"), lty = c(2 , 1, 1), lwd = c(1, 1, 2))
 rmse_arma_auto <- rmse(test_ftp, sim_arma_auto$mean)
-#-----Vasicek prediction of the training data with discretization, which leads to AR(1)
-vasi <- lm(train_dif~ftp_2y[1:train])
-sig_vasi <- sd(vasi$residuals)
-c_vasi <- coefficients(vasi)
-a_vasi <- 1 - c_vasi[2]
-b_vasi <- c_vasi[1]/a_vasi
-z_vasi <- rnorm(1, mean = 0, sd = sig_vasi)
-summary(vasi)
-sim_test_vasi_dis <- matrix(0, nrow = test, ncol = n_sim)
-for(j in 1 : n_sim){
-  sim_test_vasi_dis[1 , j] <- a_vasi * b_vasi + (1 - a_vasi) * ftp_2y[(train + 1)] + rnorm(1, mean = 0, sd = sig_vasi)
-  for(i in 2 :test){
-    sim_test_vasi_dis [i , j] <- a_vasi * b_vasi + (1 - a_vasi) * sim_test_vasi_dis[i - 1] + rnorm(1, mean = 0, sd = sig_vasi)
-  }
-}
-k <- rowMeans(sim_test_vasi_dis)
-rmse_vasi_dis <- rmse(test_dif, rowMeans(sim_test_vasi_dis)) ## better than normal draws
-plot(test_dif, type = "l")
-lines(sim_test_vasi_dis, col = "blue")
 library("olsrr")
 ols_test_breusch_pagan(vasi) ## test result shows that the residuals of lm model has heteroskedasticity --> vasicek hand wavy ish (?)
 #------ ARCH test on diff _ftp to check whether GARCH can be applied
@@ -297,6 +278,7 @@ library(rugarch)
 spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)))
 fit <- ugarchfit(spec, data = train_ftp_ts)
 sim_GARCH <- ugarchforecast(fit, n.ahead = 29)
+#fitted(sim_GARCH)[1 : 29]
 rmse_GARCH <- rmse(test_ftp, fitted(sim_GARCH))
 plot(sim_GARCH)
 lines(ftp_2y_ts)
@@ -391,20 +373,75 @@ for(i in 2 : test){
 plot(test_dif, type = "l")
 plot(expected_forecast, col = "blue")
 rmse_vasi_paper2 <- rmse(test_dif, expected_forecast)
-par(mfrow = c(1, 2))
-acf(ftp_2y, lag = 24)
-pacf(ftp_2y, lag = 24)
-acf(dif_2y, lag = 24)
-pacf(dif_2y,  lag = 24)
 #-----
-sum(dif_2y>0)/length(dif_2y)
-sum(train_dif>0)/length(train_dif)
-mean(train_dif[train_dif < 0])
-train_dif[train_dif > 0]
-plot(density(train_dif[train_dif > 0]), ylim= c(0, 2000))
-lines(density(dif_2y[dif_2y > 0]), col = "blue")
-lines(density(test_dif[test_dif > 0]), col = "red")
-plot(density(train_dif[train_dif < 0]), ylim = c(0, 2000))
-lines(density(dif_2y[dif_2y < 0]), col = "blue")
-lines(density(test_dif[test_dif < 0]), col = "red")
+shapiro.test(sarima01012$residuals, type = "Ljung-Box")
+Box.test(sarima01012$residuals, type = "Ljung-Box")
+mu <- mean(sarima01012$residuals)
+sigma_sarima <- sd(sarima01012$residuals)
+sim_sarima <- function(n, p, q, P, Q, s, I, model, pv, qv, Pv, Qv, c){
+  #n is the length of path, s is frequency of seasons, pv qv Pv Qv are vector of coefficients, I is the difference, c for intercept
+  if( I == 0){
+    x <- ftp_2y
+  }
+  else{
+    x <- diff(ftp_2y, lag = I)
+  }
+  l <- length(x)
+  lf <- length(ftp_2y)
+  sim <- c(x, rep(0, n))
+  mu <- mean(model$residuals)
+  sig <- sd(model$residuals)
+  res <- c(model$residuals, rnorm(n, mean  = mu, sd = sig)) 
+  for(i in 1 : n){
+    sim[(l + i)] <- pv * sim[(l + i - 1) : (l + i - length(p))] + qv * res[(l + i - 1) : (l + i - length(q))]  
+    + Pv * sim[(l - s + i) : (l - s + i + 1 - length(Pv))] + Qv * res[(l - s + i) : (l + i - s + 1 - length(Qv))]
+  }
+  if(I == 0){
+    return(sim)
+  }
+  else{
+    sim2 <- c(ftp_2y, rep(0, n))
+    for(i in 1 : n){
+      sim2[(i + lf)] <- sim2[(i + lf - 1)] + sim[i]
+    }
+    return(sim2)
+  }
+}
+#------ simulation for different model: # only generate n value tho
+#1. SARIMA(1, 0, 0)(0, 0, 1)[4]; 2. GARCH(1, 1); 3. AR(1); 4. ARIMA(0, 1, 1) 5. RW; 6. Vasicek
+ftp_forecast <- function(n, type){
+  if(type == 1){
+    sample_sarima <- arima(ftp_2y_ts, order = c(1, 0, 0), seasonal = c(0,0,1,4), method = "ML")
+    sim_1 <- forecast(sample_sarima, h = n)
+    return(sim_1$mean)
+  }
+  else if(type == 2){
+    spec1 <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)))
+    fit1 <- ugarchfit(spec1, data = ftp_2y_ts)
+    sim_2 <- ugarchforecast(fit1, n.ahead = n)
+    return(fitted(sim_2))
+  }
+  else if(type == 3){
+    sample_sarima <- arima(ftp_2y_ts, order = c(1, 0, 0), method = "ML")
+    sim_1 <- forecast(sample_sarima, h = n)
+    return(sim_1$mean)
+  }
+  else if(type == 4){
+    sample_sarima <- arima(ftp_2y_ts, order = c(0, 1, 1), method = "ML")
+    sim_1 <- forecast(sample_sarima, h = n)
+    return(sim_1$mean)
+  }
+  else if(type == 5){
+    res <- rnorm(n, mean = mean(dif_2y), sd = sd(dif_2y))
+    sim <- rep(0, n)
+    sim[1] <- res[1] + ftp_2y_ts[length(ftp_2y_ts)]
+    for(i in 2 : n){
+      sim[i] <- res[i] + sim[(i - 1)] 
+    }
+    return(sim)
+  }
+  else if (type == 6){
+    return(0)
+  }
+}
 
