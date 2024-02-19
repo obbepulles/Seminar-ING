@@ -377,36 +377,6 @@ rmse_vasi_paper2 <- rmse(test_dif, expected_forecast)
 shapiro.test(sarima01012$residuals, type = "Ljung-Box")
 Box.test(sarima01012$residuals, type = "Ljung-Box")
 mu <- mean(sarima01012$residuals)
-sigma_sarima <- sd(sarima01012$residuals)
-sim_sarima <- function(n, p, q, P, Q, s, I, model, pv, qv, Pv, Qv, c){
-  #n is the length of path, s is frequency of seasons, pv qv Pv Qv are vector of coefficients, I is the difference, c for intercept
-  if( I == 0){
-    x <- ftp_2y
-  }
-  else{
-    x <- diff(ftp_2y, lag = I)
-  }
-  l <- length(x)
-  lf <- length(ftp_2y)
-  sim <- c(x, rep(0, n))
-  mu <- mean(model$residuals)
-  sig <- sd(model$residuals)
-  res <- c(model$residuals, rnorm(n, mean  = mu, sd = sig)) 
-  for(i in 1 : n){
-    sim[(l + i)] <- pv * sim[(l + i - 1) : (l + i - length(p))] + qv * res[(l + i - 1) : (l + i - length(q))]  
-    + Pv * sim[(l - s + i) : (l - s + i + 1 - length(Pv))] + Qv * res[(l - s + i) : (l + i - s + 1 - length(Qv))]
-  }
-  if(I == 0){
-    return(sim)
-  }
-  else{
-    sim2 <- c(ftp_2y, rep(0, n))
-    for(i in 1 : n){
-      sim2[(i + lf)] <- sim2[(i + lf - 1)] + sim[i]
-    }
-    return(sim2)
-  }
-}
 #------ simulation for different model: # only generate n value tho
 #1. SARIMA(1, 0, 0)(0, 0, 1)[4]; 2. GARCH(1, 1); 3. AR(1); 4. ARIMA(0, 1, 1) 5. RW; 6. Vasicek
 ftp_forecast <- function(n, type){
