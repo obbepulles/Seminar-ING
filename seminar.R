@@ -9,15 +9,37 @@ ER <- as.data.frame(data[ , 9 : 13])
 DER <- as.data.frame(data[ , 8])
 ftp_2y <- FTP[ , 1]
 #--functions writing here-----
-Mode <- function(x) {
-  ux <- unique(x)
-  ux[which.max(tabulate(match(x, ux)))]
-}
-modes <- function(d){
-  i <- which(diff(sign(diff(d$y))) < 0) + 1
-  data.frame(x = d$x[i], y = d$y[i])
+vasi_ml <- function(x){
+  n <- length(x) - 1
+  x_n_1 <- x[1 : n]
+  x_n_2 <- x[2 : (n + 1)]
+  a <- -12 * log((n * sum(x_n_1 * x_n_2) - sum(x_n_1) * sum(x_n_2)) / (n * sum(x_n_1 * x_n_1) - sum(x_n_1)^2))
+  r <- 1 / (n * (1 - exp(-a / 12))) * (sum(x_n_2) - exp(-a / 12) * sum(x_n_1))
+  v <- 2*a / (n * (1 - exp(-a / 6))) * sum(x_n_2 - x_n_1 * exp(-a / 12) - r * (1 - exp(-a / 12)))^2
+  return(c(a, r, v))
 }
 
+vasi_forecast <-  function(par, n){
+  a <- par[1]
+  r <- par[2]
+  v <- par[3]
+  sim <- rep(0, n)
+  sim[1] <- ftp_2y_ts[length(ftp_2y_ts)] * exp(-a / 12) + r * (1 - exp(-a / 12))
+  for(i in 2 : n){
+    sim[i] <- sim[(i - 1)] * exp(-a / 12) + r * (1 - exp(-a / 12))
+  }
+  return(sim)
+}
+sarima01012$coef
+
+sim_sarima <- function(n, p, q, I, P, Q, pv, qv, Pv, Qv, c, model){
+  mu <- mean(model$residuals)
+  sd <- sd(model$residuals)
+  res <- rnorm(n, mean = mu, sd = sd)
+  sim <- rep(0, n)
+  sim[1] <- 1
+  
+}
 #--------------
 #overall data visualization <- still need to fix the x-axis to time 
 plot(DFTP, FTP[,1], type = "l")
@@ -241,16 +263,16 @@ lines(auto_arma_model$fitted, col = "cornflowerblue", lty = 2, lwd = 1.2)
 legend("bottomleft", legend = c("fitted value","actual value", "predicted value"), col = c("cornflowerblue","black", "cyan2"), lty = c(2 , 1, 1), lwd = c(1, 1, 2))
 rmse_arma_auto <- rmse(test_ftp, sim_arma_auto$mean)
 library("olsrr")
-ols_test_breusch_pagan(vasi) ## test result shows that the residuals of lm model has heteroskedasticity --> vasicek hand wavy ish (?)
+#ols_test_breusch_pagan(vasi) ## test result shows that the residuals of lm model has heteroskedasticity --> vasicek hand wavy ish (?)
 #------ ARCH test on diff _ftp to check whether GARCH can be applied
 library("FinTS")
 ArchTest(dif_2y) ## you cannot model it via Garch
 ArchTest(ftp_2y)
 #----vasicek paper using MLE method by Axel Gerebenk
 n <- (length(ftp_2y) - test )
-a_vasi <- -1 / 12 * log ((n * sum(ftp_2y[1: (n - 1)] * ftp_2y[2 : n]) - sum(ftp_2y[2 : n]) * sum(ftp_2y[ 1: (n - 1)]))/(n * sum(ftp_2y[1 : (n - 1)]^2) - sum(ftp_2y[1 : (n - 1)])^2))
+a_vasi <- -12 * log (((n - 1) * sum(ftp_2y[1: (n - 1)] * ftp_2y[2 : n]) - sum(ftp_2y[2 : n]) * sum(ftp_2y[ 1: (n - 1)]))/((n - 1) * sum(ftp_2y[1 : (n - 1)]^2) - sum(ftp_2y[1 : (n - 1)])^2))
 lr_mu_vasi <- 1 / (n * (1 - exp(-a_vasi / 12))) * (sum(ftp_2y[2 : n]) - exp(a_vasi / 12) * sum(ftp_2y[1 : (n - 1)]))
-var_vasi <- 2 * a_vasi / (n * (1 - exp(-a_vasi / 6))) * sum((ftp_2y[2 : n] - ftp_2y[1 : (n -1)] * exp(-a_vasi/12) - lr_mu_vasi * (1 - exp(-a_vasi/12)))^2)
+var_vasi <- 2 * a_vasi / ((n - 1) * (1 - exp(-a_vasi / 6))) * sum((ftp_2y[2 : n] - ftp_2y[1 : (n -1)] * exp(-a_vasi/12) - lr_mu_vasi * (1 - exp(-a_vasi/12)))^2)
 expected_forecast <- rep(0 , test)
 expected_forecast [1] <- ftp_2y[(train + 1)] * exp(-a_vasi) + lr_mu_vasi * (1 - exp(-a_vasi / 12))
 for(i in 2 : test){
