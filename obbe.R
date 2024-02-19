@@ -374,6 +374,5 @@ for(i in clients){
 }
 
 
-
 hist(hs_costs , main = "Histogram of historical simulation option costs", xlab = "NPV Cost", col = 'green4')
 summary(hs_costs )
