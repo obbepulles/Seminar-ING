@@ -298,7 +298,7 @@ fraction <- cancelled_summary %>% group_by(Client) %>% summarize(fraction = ((as
 mean_util <- data %>% filter(!is.na(`Cancellation date`)) %>% group_by(Client) %>% summarize(mean = mean(`Used amount`))
 plot(y = fraction$fraction, x = cancelled_summary$`Used amount`)
 plot(y = fraction$fraction, x = mean_util$mean)
-
+hist(fraction$fraction)
 ########################################################################
 filtered_df <- data %>%
   group_by(Client) %>%
@@ -367,15 +367,27 @@ count <- 1
 for(i in clients){
   client <- cancelled_data %>% filter(Client == i) 
   hs_costs[count] <- hist_sim_option_cost_simple(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], client$`Cancellation date`[1], rate_data$`1Y`, euri_sim, ftp_data, 1, pool_coef)
-  #a <- length(client$`Used amount`)
-  #ts <- c(client$`Used amount`, sim[3:length(sim)])
-  
   count <- count + 1
 }
 
 hist(hs_costs , main = "Histogram of historical simulation option costs", xlab = "NPV Cost", col = 'green4')
 summary(hs_costs )
 #check hs_costs vs maturity in years
+
+sum_data_cancel <- cancelled_data %>% group_by(Client) %>% slice(1)  
+sum_data_cancel <- cbind(sum_data_cancel, hs_costs)
+names(sum_data_cancel)[19] <- "Option cost"
+
+ggplot(sum_data_cancel, aes(x = Client, y = `Option cost`, color = factor(Maturity))) +
+  geom_point() +
+  labs(x = "Client", y = "Historical Option Cost", color = "Maturity Length (Years)") +
+  theme_minimal()
+
+ggplot(sum_data_cancel, aes(x = Maturity, y = `Option cost`, color = factor(Maturity))) +
+  geom_point() +
+  labs(x = "Maturity", y = "Historical Option cost", color = "Maturity Length (Years)") +
+  theme_minimal()
+
 
 npv_alpha <- sort(hs_costs)[ceiling(0.99*length(hs_costs))]
 eos <- rep(0, length(hs_costs))
@@ -398,3 +410,18 @@ for(i in clients){
 
 plot(sort(eos))
 summary(eos)
+
+sum_data_cancel <- cbind(sum_data_cancel, eos)
+names(sum_data_cancel)[20] <- "EOS"
+
+ggplot(sum_data_cancel, aes(x = Client, y = `EOS`, color = factor(Maturity))) +
+  geom_point() +
+  labs(x = "Client", y = "EOS", color = "Maturity Length (Years)") +
+  theme_minimal()
+
+ggplot(sum_data_cancel, aes(x = Maturity, y = `EOS`, color = factor(Maturity))) +
+  geom_point() +
+  labs(x = "Maturity", y = "EOS", color = "Maturity Length (Years)") +
+  theme_minimal()
+
+
