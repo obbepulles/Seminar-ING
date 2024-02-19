@@ -393,7 +393,7 @@ ggplot(sum_data_cancel, aes(x = Maturity, y = `Option cost`, color = factor(Matu
   theme_minimal()
 
 
-npv_alpha <- sort(hs_costs)[ceiling(0.99*length(hs_costs))]
+npv_alpha <- sort(-hs_costs)[ceiling(0.99 * length(hs_costs))]
 eos <- rep(0, length(hs_costs))
 
 count <- 1
@@ -414,6 +414,7 @@ for(i in clients){
 
 plot(sort(eos))
 summary(eos)
+hist(eos)
 
 sum_data_cancel <- cbind(sum_data_cancel, eos)
 names(sum_data_cancel)[20] <- "EOS"
@@ -441,5 +442,4 @@ ggplot(sum_data_cancel, aes(x = `Client var`, y = `EOS`, color = factor(Maturity
   geom_point() +
   labs(x = "Client var", y = "EOS", color = "Maturity Length (Years)") +
   theme_minimal()
-
 
