@@ -30,10 +30,6 @@ vasi_forecast <-  function(par, n, lastdata){
   }
   return(sim)
 }
-
-
-
-
 sim_sarima <- function(n, p, I, q, P, Q, s, pv, qv, Pv, Qv, c, model){
   res_0 <- model$residuals
   mu <- mean(res_0)
