@@ -14,31 +14,76 @@ vasi_ml <- function(x){
   x_n_1 <- x[1 : n]
   x_n_2 <- x[2 : (n + 1)]
   a <- -12 * log((n * sum(x_n_1 * x_n_2) - sum(x_n_1) * sum(x_n_2)) / (n * sum(x_n_1 * x_n_1) - sum(x_n_1)^2))
-  r <- 1 / (n * (1 - exp(-a / 12))) * (sum(x_n_2) - exp(-a / 12) * sum(x_n_1))
-  v <- 2*a / (n * (1 - exp(-a / 6))) * sum(x_n_2 - x_n_1 * exp(-a / 12) - r * (1 - exp(-a / 12)))^2
+  r <- 1 / (n * (1 - exp(-a / 12))) * (sum(x_n_2) - exp(a / 12) * sum(x_n_1))
+  v <- 2*a / (n * (1 - exp(-a / 6))) * sum((x_n_2 - x_n_1 * exp(-a / 12) - r * (1 - exp(-a / 12)))^2)
   return(c(a, r, v))
 }
-
-vasi_forecast <-  function(par, n){
+vasi_forecast <-  function(par, n, lastdata){
   a <- par[1]
   r <- par[2]
   v <- par[3]
   sim <- rep(0, n)
-  sim[1] <- ftp_2y_ts[length(ftp_2y_ts)] * exp(-a / 12) + r * (1 - exp(-a / 12))
+  sim[1] <- lastdata * exp(-a / 12) + r * (1 - exp(-a / 12))
   for(i in 2 : n){
     sim[i] <- sim[(i - 1)] * exp(-a / 12) + r * (1 - exp(-a / 12))
+    print(sim[i] == expected_forecast[i])
   }
   return(sim)
 }
-sarima01012$coef
 
-sim_sarima <- function(n, p, q, I, P, Q, pv, qv, Pv, Qv, c, model){
-  mu <- mean(model$residuals)
-  sd <- sd(model$residuals)
+
+
+
+sim_sarima <- function(n, p, I, q, P, Q, s, pv, qv, Pv, Qv, c, model){
+  res_0 <- model$residuals
+  mu <- mean(res_0)
+  sd <- sd(res_0)
   res <- rnorm(n, mean = mu, sd = sd)
-  sim <- rep(0, n)
-  sim[1] <- 1
+  if (I == 0){  
+    resa <- c(res_0, res)
+    sim <- c(ftp_2y_ts, rep(0, n))
+    l <- length(ftp_2y_ts)
+    for(i in (l + 1) : (l + n)){
+      sP <- Pv * sim[(i - s) : (i - s - P + 1)]
+      sQ <- Qv * resa[(i - s) : (i - s - Q + 1)] 
+      sP[is.na(sP)] <- 0
+      sQ[is.na(sQ)] <- 0
+      sim[i] <- sum(pv * sim[(i - 1) : (i - p)]) + sum(qv * sim[(i - 1) : (i - q)]) + c + sum(sP) + sum(sQ)
+    }
+    return(sim[(l + 1) : (l + n)])
+  }
   
+  else{
+    dif <- diff(ftp_2y, lag = I)
+    l <- length(dif)
+    sim <- rep(0, n)
+    resa <- c(res_0, res)
+    sp <- pv * dif[(l) : (l - p + 1)]
+    sq <- qv * res_0[(l) : (l - q + 1)]
+    sP <- Pv * dif[(l - s + 1) : (l - s - P + 2)]
+    sQ <- Qv * resa[(l - s + 1) : (l - s - Q + 2)]
+    sp[is.na(sp)] <- 0
+    sq[is.na(sq)] <- 0
+    sP[is.na(sP)] <- 0
+    sQ[is.na(sQ)] <- 0
+    delta <- sum(sp) + sum(sq) + c + sum(sP) + sum(sQ)
+    sim [1] <- ftp_2y[length(ftp_2y)] + delta
+    dif <- c(dif, delta)
+    for(i in 2 : n){
+      sp <- pv * dif[(l + i) : (l + i- p + 1)]
+      sq <- qv * res_0[(l + i) : (l + i- q + 1)]
+      sP <- Pv * dif[(l + i - s + 1) : (l + i - s - P + 2)]
+      sQ <- Qv * resa[(l + i - s + 1) : (l + i - s - Q + 2)]
+      sp[is.na(sp)] <- 0
+      sq[is.na(sq)] <- 0
+      sP[is.na(sP)] <- 0
+      sQ[is.na(sQ)] <- 0
+      delta <- sum(sp) + sum(sq) + c + sum(sP) + sum(sQ)
+      sim [i] <- sim[(i - 1)] + delta
+      dif <- c(dif, delta)
+    }
+    return(sim)
+  }
 }
 #--------------
 #overall data visualization <- still need to fix the x-axis to time 
@@ -269,18 +314,10 @@ library("FinTS")
 ArchTest(dif_2y) ## you cannot model it via Garch
 ArchTest(ftp_2y)
 #----vasicek paper using MLE method by Axel Gerebenk
-n <- (length(ftp_2y) - test )
-a_vasi <- -12 * log (((n - 1) * sum(ftp_2y[1: (n - 1)] * ftp_2y[2 : n]) - sum(ftp_2y[2 : n]) * sum(ftp_2y[ 1: (n - 1)]))/((n - 1) * sum(ftp_2y[1 : (n - 1)]^2) - sum(ftp_2y[1 : (n - 1)])^2))
-lr_mu_vasi <- 1 / (n * (1 - exp(-a_vasi / 12))) * (sum(ftp_2y[2 : n]) - exp(a_vasi / 12) * sum(ftp_2y[1 : (n - 1)]))
-var_vasi <- 2 * a_vasi / ((n - 1) * (1 - exp(-a_vasi / 6))) * sum((ftp_2y[2 : n] - ftp_2y[1 : (n -1)] * exp(-a_vasi/12) - lr_mu_vasi * (1 - exp(-a_vasi/12)))^2)
-expected_forecast <- rep(0 , test)
-expected_forecast [1] <- ftp_2y[(train + 1)] * exp(-a_vasi) + lr_mu_vasi * (1 - exp(-a_vasi / 12))
-for(i in 2 : test){
-  expected_forecast[i] <- expected_forecast[(i - 1)] * exp(-a_vasi) + lr_mu_vasi * (1 - exp(-a_vasi / 12))
-}
+va <- vasi_forecast(vasi_ml(train_ftp), test, train_ftp[length(train_ftp)])
 plot(ftp_2y[(train + 2): length(ftp_2y)], type = "l")
 plot(expected_forecast)
-rmse_vasi_paper <- rmse(ftp_2y[(train + 2) : length(ftp_2y)], expected_forecast)
+rmse_vasi_paper <- rmse(test_ftp, va)
 #---- normal muxture of ftp directly
 mix_norm1_ftp <- mixfit(ftp_2y, ncomp= 1, family = "norm")
 mix_norm2_ftp <- mixfit(ftp_2y, ncomp= 2, family = "norm")
