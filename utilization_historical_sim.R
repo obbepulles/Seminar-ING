@@ -133,3 +133,91 @@ simulate_utilization_ts <- function(ts_sim, ts, r, tau){
   return(ts_sim)
 }
 
+
+
+simulate_utilization_ongoing(start, mat, ts, pool_coef, p_cancel, p_typeone, beta_a, beta_b, sdmodel){
+  
+  T <- length(seq(from = start, to = mat, by = 'month')) - 1
+  tau <- length(ts)
+  r <- T - tau
+  ts_sim <- rep(0,r)
+  
+  constuse <- TRUE
+  if(length(ts) > 1){
+    if(var(ts) > 0){
+      constuse <- FALSE
+    }
+  }
+  else if(length(ts) == 1){
+    constuse <- ifelse((rbinom(1, 1, prob = (1-p_typeone)) == 1), TRUE, FALSE)
+  }
+  
+  #If we have constant use then the simulated ts is just the first observation as use does not change over time
+  if(constuse){
+    ts_sim <- rep(ts[1],r)
+    return(ts_sim)
+  }
+  
+  p_t_less_tau <- pbeta(tau / T, shape1 = beta_a, shape2 = beta_b)
+  
+  #Given that the contract survived until time Tau, what is the probability of cancelling in (tau,T)?
+  p_cancel_cond <- 1 - (1 - p_cancel) / (1 - p_cancel * p_t_less_tau)
+  #Generate the type according to the probability of being type 1 or type 0
+  #--- type 0: don't cancel before maturity
+  #--- type 1: cancel before maturity
+  type <- rbinom(1, 1, prob = p_cancel_cond)
+  
+  if(tau < 24){
+    sigma <- rmixgamma(1, sdmodel$pi, sdmodel$mu, sdmodel$sd)
+  }
+  else{
+    comb_ts <- na.omit(cbind(ts,lag(ts)))
+    error <- comb_ts[,1] - pool_coef[1] - pool_coef[2]*pool_coef[,2]
+    sigma <- sd(error)
+  }
+  
+  #If use is varying then make a distinction between clients who cancel and those who dont
+  if(type == 1){
+    taustar <- simulate_cond_cancel(beta_a, beta_b, tau, T)
+    #Simulate random use until taustar, then use expectation for the rest
+    ts_sim[1] <- max(min(pool_coef[1] + pool_coef[2]*ts[tau] + rnorm(1, mean = 0, sd = sigma), 1), 0)
+    
+    #Until the new cancellation time
+    for(i in 2:(taustar - tau)){
+      ts_sim[i] <- max(min(pool_coef[1] + pool_coef[2]*ts_sim[i-1] + rnorm(1, mean = 0, sd = sigma), 1), 0)
+    }
+    #From new cancellation until maturity
+    for(i in (taustar - tau + 1):r){
+      c <- coef_arima[1] + ts_sim[i-1] * coef_arima[2]
+      ts_sim[i] <- max(min((c * (pnorm(1 - c, mean = 0, sd = sigma) - pnorm(-c,mean = 0, sd = sigma)) + 1 - pnorm(1 - c, mean = 0, sd = sigma)), 1), 0)
+    }
+    
+  }
+  if(type == 0){
+    ts_sim[1] <- max(min(pool_coef[1] + pool_coef[2]*ts[tau] + rnorm(1, mean = 0, sd = sigma), 1), 0)
+    for(i in 2:r){
+      ts_sim[i] <- max(min(pool_coef[1] + pool_coef[2]*ts_sim[i-1] + rnorm(1, mean = 0, sd = sigma), 1), 0)
+    }
+  }
+  
+  return(1)
+}
+
+cancel_cond_cdf <- function(taustar, beta_a, beta_b, T, tau){
+  num <- pbeta(taustar / T, shape1 = beta_a, shape2 = beta_b) - pbeta(tau / T, shape1 = beta_a, shape2 = beta_b)
+  denom <- 1 - pbeta(tau / T, shape1 = beta_a, shape2 = beta_b)
+  return(num / denom)
+}
+
+
+simulate_cond_cancel <- function(beta_a, beta_b, tau, T){
+  
+  u <- runif(1, min = 0, max = 1)
+  min_t <- tau
+  max_t <- T
+  new_cancel <- (tau + T) / 2
+  opt <- optim(new_cancel, fn <- function(x){ ((u-cancel_cond_cdf(x, beta_a, beta_b, T, tau))^2) }, method = "Brent", lower = min_t, upper = max_t)
+  
+  return(ceiling(opt$par))
+}
+
