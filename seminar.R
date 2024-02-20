@@ -466,7 +466,8 @@ ftp_forecast <- function(n, type){
     return(sim)
   }
   else if (type == 6){
-    return(0)
+    sim <- vasi_forecast(vasi_ml(ftp_2y), n, ftp_2y[length(ftp_2y)])
+    return(sim)
   }
 }
 
