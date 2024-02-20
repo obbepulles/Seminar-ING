@@ -471,3 +471,11 @@ ftp_forecast <- function(n, type){
   }
 }
 
+#--- empirical cdf of ftp
+library(copula)
+library(MASS)
+install.packages("MASS")
+emp_ftp <- rank(ftp_2y)/ (length(ftp_2y) + 1)
+emp_eur <- rank(ER[, 1])/ (length(ER[, 1]) + 1)
+plot(emp_ftp, emp_eur, pch = 16, col = "blue")
+emp_UU <- c(emp_ftp, emp_eur)
