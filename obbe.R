@@ -196,6 +196,7 @@ hist(fraction$fraction)
 
 x <- fraction$fraction
 beta_fit <- fitdistrplus::fitdist(x, "beta")
+beta_coef <- coef(beta_fit)
 ########################################################################
 filtered_df <- data %>%
   group_by(Client) %>%
@@ -264,7 +265,7 @@ client_var <- rep(0,length(clients))
 
 for(i in clients){
   client <- cancelled_data %>% filter(Client == i) 
-  hs_costs[count] <- hist_sim_option_cost_simple(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], client$`Cancellation date`[1], rate_data$`1Y`, euri_sim, ftp_data, 1, pool_coef)
+  hs_costs[count] <- hist_sim_option_cost_simple(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], client$`Cancellation date`[1], rate_data$`1Y`, euri_sim, ftp_data, pool_coef)
   client_var[count] <- var(diff(client$`Used amount`))
   
   count <- count + 1
@@ -343,6 +344,14 @@ ggplot(sum_data_cancel, aes(x = `Client var`, y = `EOS`, color = factor(Maturity
 ######################################################################################################
 data_ongoing <- data %>% group_by(Client) %>% filter(last(`Reporting date`) != last(`Maturity date`)) %>% filter(is.na(`Cancellation date`))
 ongoing_clients <- unique(as.numeric(data_ongoing$Client))
-
+ongoing_option_cost_df <- rep(0,length(ongoing_clients))
+count <- 1
+for(i in ongoing_clients){
+  client <- data_ongoing %>% filter(Client == i)
+  #x <- ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim, ftp_data, ftp_sim, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
+  ongoing_option_cost_df[count] <- ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim, ftp_data, ftp_sim, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
+  print(ongoing_option_cost_df)
+  count <- count + 1
+}
 
 
