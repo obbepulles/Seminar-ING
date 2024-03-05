@@ -53,7 +53,7 @@ hist(first_utilization$`first(\`Used amount\`)`, main = "Histogram of first util
 #     (ii)   0              , if phi * U_{t-1} + eps_t <= 0
 #     (iii)  phi * U_{t-1} + eps_t, otherwise
 
-##########################################################################################################
+######################################################################################################
 #--- First Tobit result, only use non-constant data and length > 5
 filtered_df <- data %>%
   group_by(Client) %>%
@@ -72,7 +72,7 @@ error <- modeldata$Y - modeldata$X * tobit_model$estimate[2] - tobit_model$estim
 #plot(density(error^2))
 #qqnorm(y = error)
 #qqline(y = error, col = 2)
-##########################################################################################################
+######################################################################################################
 
 #--- Some random things for plotting purposes
 modes <- function(d){
@@ -96,7 +96,7 @@ modes <- function(d){
 # }
 
 
-#########################################################################
+######################################################################################################
 #--- Most up-to-date data analysis starts
 #Filter those clients whose contracts have already matured
 #Last reporting date is 31-12-2021
@@ -156,7 +156,7 @@ lag_nonconst_covid <- lag_nonconst %>% mutate(covid = if_else(`Reporting date` >
 tobit_model_covid <- censReg(data = lag_nonconst_covid, `Lag used` ~ `Used amount` + covid + `6M` + `1Y` + `3Y.x` + `5Y.x` + `10Y.x`)
 summary(tobit_model_covid)
 
-########################################################################
+######################################################################################################
 #--- Calculate probability of cancelling early
 non_cancel_matured <- data %>% group_by(Client) %>% 
                         filter((is.na(last(`Cancellation date`))) & (last(`Reporting date`) == first(`Maturity date`))) %>%
@@ -172,7 +172,7 @@ non_matured <- data %>% group_by(Client) %>%
   summarize(ind = n_distinct(Client)) %>%
   summarize(ncm = sum(ind))
 p_cancel <- (cancel / (non_cancel_matured + cancel))[[1]]
-########################################################################
+######################################################################################################
 #--- Calculate probability of being type 1 (constant utilization)
 
 non_single_utilization <- data %>% group_by(Client) %>%
@@ -186,7 +186,7 @@ n_non_single_var <- non_single_utilization %>% group_by(Client) %>%
 n_single <- 1200 - n_non_single_const - n_non_single_var
 
 p_typeone <- (n_non_single_var / (n_non_single_const + n_non_single_var))[[1]]
-########################################################################
+######################################################################################################
 #--- Check relation between risk factors using scatterplots, later extend to OLS/etc
 cancelled_summary <- data %>% filter(!is.na(`Cancellation date`)) %>% filter(`Reporting date` == `Cancellation date`)
 fraction <- cancelled_summary %>% group_by(Client) %>% summarize(fraction = ((as.numeric(`Cancellation date`)- as.numeric(`Start date`)) / (as.numeric(`Maturity date`) - as.numeric(`Start date`))))
@@ -198,7 +198,7 @@ hist(fraction$fraction)
 x <- fraction$fraction
 beta_fit <- fitdistrplus::fitdist(x, "beta")
 beta_coef <- coef(beta_fit)
-########################################################################
+######################################################################################################
 filtered_df <- data %>%
   group_by(Client) %>%
   filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 23)) 
@@ -343,17 +343,18 @@ ggplot(sum_data_cancel, aes(x = `Client var`, y = `EOS`, color = factor(Maturity
   theme_minimal()
 
 ######################################################################################################
+#--- Option cost & EOS for ongoing clients
 data_ongoing <- data %>% group_by(Client) %>% filter(last(`Reporting date`) != last(`Maturity date`)) %>% filter(is.na(`Cancellation date`))
 ongoing_clients <- unique(as.numeric(data_ongoing$Client))
-ongoing_option_cost_df <- matrix(0,nrow = 20, ncol = length(ongoing_clients))
-ongoing_eos_df <- matrix(0,nrow = 20, ncol = length(ongoing_clients))
+ongoing_option_cost_df <- matrix(0,nrow = 100, ncol = length(ongoing_clients))
+ongoing_eos_df <- matrix(0,nrow = 100, ncol = length(ongoing_clients))
 count <- 1
 for(i in ongoing_clients){
   client <- data_ongoing %>% filter(Client == i)
-  for(j in 1:20){
+  for(j in 1:100){
     x <- ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim, ftp_2y, ftp_sim, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
-    ongoing_option_cost_df[j,count] <- x[[1]]
-    ongoing_eos_df[j,count] <- x[[2]]
+    ongoing_option_cost_df[j, count] <- x[[1]]
+    ongoing_eos_df[j, count] <- x[[2]]
   }
   #ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim, ftp_data, ftp_sim, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
   count <- count + 1
@@ -361,5 +362,7 @@ for(i in ongoing_clients){
 
 NPV_alpha_ongoing <- sort(-as.vector(ongoing_option_cost_df))[0.999 * 100 * length(ongoing_clients)]
 summary(as.vector(ongoing_eos_df))
-hist(ongoing_option_cost_df * 1000000)
-0 %in% ongoing_eos_df
+hist(ongoing_option_cost_df)
+hist(ongoing_eos_df*NPV_alpha_ongoing)
+
+######################################################################################################

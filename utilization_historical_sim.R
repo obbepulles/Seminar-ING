@@ -109,7 +109,7 @@ simulate_utilization_ts <- function(ts_sim, ts, r, tau){
 ongoing_option_cost <- function(ts, start, mat, euri, euri_sim, ftp, ftp_sim, pool_coef, p_cancel, p_typeone, beta_a, beta_b, sdmodel){
   
   #Work in month-intervals
-  T <- length(seq(from = start, to = mat, by = 'month')) 
+  T <- length(seq(from = start, to = mat, by = 'month')) - 1
   #Simulate the rest of the time utilizaiton time series for this client
   sim <- simulate_utilization_ongoing(start, mat, ts, pool_coef, p_cancel, p_typeone, beta_a, beta_b, sdmodel)
   ts_sim <- sim[[1]]
@@ -135,14 +135,14 @@ ongoing_option_cost <- function(ts, start, mat, euri, euri_sim, ftp, ftp_sim, po
   for(i in 1:length(rates)){
     rates[i] <- exp(-rates[i] * i / 12)
   }
-  u <- c(ts,ts_sim)[(cancel_pos-1):(stop_pos-1)]
+  u <- c(ts, ts_sim)[(tau-1):(T-1)]
   option_cost <- dFTP_tau * sum(u * rates)
 
-  rates <- c(euri,euri_sim)[(start_pos+1):(cancel_pos)]
-  for(i in 1:length(rates)){
-    rates[i] <- exp(-rates[i] * i / 12)
+  ratesn <- c(euri,euri_sim)[(start_pos+1):(cancel_pos)]
+  for(i in 1:length(ratesn)){
+    ratesn[i] <- exp(-ratesn[i] * i / 12)
   }
-  eos_denom <- sum(c(ts,ts_sim)[1:(tau)] * rates)
+  eos_denom <- 1 / sum(c(ts,ts_sim)[1:(tau)] * ratesn)
   
   return(list(option_cost, eos_denom))
 }
@@ -150,9 +150,9 @@ ongoing_option_cost <- function(ts, start, mat, euri, euri_sim, ftp, ftp_sim, po
 #--- Simulate the utilization for a contract which has not ended yet at the "end" date of the data
 simulate_utilization_ongoing <- function(start, mat, ts, pool_coef, p_cancel, p_typeone, beta_a, beta_b, sdmodel){
   
-  T <- length(seq(from = start, to = mat, by = 'month')) 
+  T <- length(seq(from = start, to = mat, by = 'month')) - 1
   tau <- length(ts)
-  r <- T - tau + 1
+  r <- T - tau 
   ts_sim <- rep(0,r)
   taustar <- T
   constuse <- TRUE
@@ -190,7 +190,7 @@ simulate_utilization_ongoing <- function(start, mat, ts, pool_coef, p_cancel, p_
     #If we have constant use then the simulated ts is just the first observation as use does not change over time
     if(constuse){
       ts_sim <- rep(ts[1],r)
-      return(list(ts_sim,taustar))
+      return(list(ts_sim, taustar))
     }
     
     ts_sim[1] <- max(min(pool_coef[1] + pool_coef[2]*ts[tau] + rnorm(1, mean = 0, sd = sigma), 1), 0)
