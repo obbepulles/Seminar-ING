@@ -18,6 +18,7 @@ data$`Cancellation date` <- as.Date(data$`Cancellation date`, "%d-%m-%Y")
 data$`Start date` <- as.Date(data$`Start date`, "%d-%m-%Y")
 rate_data <- readxl::read_xlsx("hypothetical_data_set.xlsx",1, skip = 1, range = "H2:M122")
 ftp_data <- readxl::read_xlsx("hypothetical_data_set.xlsx",1, skip = 1, range = "A2:F122")
+ftp_2y <- as.vector(unname(ftp_data[, 2]))[[1]]
 
 
 data <- data %>% mutate(month_year = format(`Reporting date`, "%m-%Y")) 
@@ -344,14 +345,21 @@ ggplot(sum_data_cancel, aes(x = `Client var`, y = `EOS`, color = factor(Maturity
 ######################################################################################################
 data_ongoing <- data %>% group_by(Client) %>% filter(last(`Reporting date`) != last(`Maturity date`)) %>% filter(is.na(`Cancellation date`))
 ongoing_clients <- unique(as.numeric(data_ongoing$Client))
-ongoing_option_cost_df <- rep(0,length(ongoing_clients))
+ongoing_option_cost_df <- matrix(0,nrow = 20, ncol = length(ongoing_clients))
+ongoing_eos_df <- matrix(0,nrow = 20, ncol = length(ongoing_clients))
 count <- 1
 for(i in ongoing_clients){
   client <- data_ongoing %>% filter(Client == i)
-  #x <- ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim, ftp_data, ftp_sim, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
-  ongoing_option_cost_df[count] <- ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim, ftp_data, ftp_sim, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
-  print(ongoing_option_cost_df)
+  for(j in 1:20){
+    x <- ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim, ftp_2y, ftp_sim, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
+    ongoing_option_cost_df[j,count] <- x[[1]]
+    ongoing_eos_df[j,count] <- x[[2]]
+  }
+  #ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim, ftp_data, ftp_sim, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
   count <- count + 1
 }
 
-
+NPV_alpha_ongoing <- sort(-as.vector(ongoing_option_cost_df))[0.999 * 100 * length(ongoing_clients)]
+summary(as.vector(ongoing_eos_df))
+hist(ongoing_option_cost_df * 1000000)
+0 %in% ongoing_eos_df

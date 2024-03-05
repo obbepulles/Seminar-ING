@@ -11,7 +11,7 @@ DFTP <- as.data.frame(data[ , 1 ])
 ER <- as.data.frame(data[ , 9 : 13])
 DER <- as.data.frame(data[ , 8])
 ftp_2y <- FTP[ , 1]
-er <- ER[, 1]
+er <- ER[, 2]
 #--functions writing here-----
 vasi_ml <- function(x){
   n <- length(x) - 1
@@ -61,5 +61,5 @@ ls_vasi_joint <- function(x, y){
 }
 jointpar_all <- ls_vasi_joint(er, ftp_2y)
 x <- 120 ##x is number of months
-x_months_ftp <- vasi_forecast(jointpar_all[4:6], x, ftp_2y[length(ftp_2y)])
-x_months_er <- vasi_forecast(jointpar_all[1:3], x,  er[length(er)])
+ftp_sim <- vasi_forecast(jointpar_all[4:6], x, ftp_2y[length(ftp_2y)])
+euri_sim <- vasi_forecast(jointpar_all[1:3], x,  er[length(er)])

@@ -11,7 +11,7 @@
 hist_sim_option_cost_simple <- function(ts, start, mat, cancel, euri, euri_sim, ftp, pool_coef){
   
   #Work in month-intervals
-  T <- length(seq(from = start, to = mat, by = 'month')) - 1
+  T <- length(seq(from = start, to = mat, by = 'month')) 
   tau <- length(ts)
   #length of simulated TS should be at least 2, cancelling at maturity is not allowed
   r <- (T - tau) + 1
@@ -51,7 +51,6 @@ hist_sim_option_cost_simple <- function(ts, start, mat, cancel, euri, euri_sim, 
   }
   
   option_cost <- dFTP_tau * sum(ts_sim * rates)
-  print(option_cost)
   return(option_cost[[1]])
 }
 
@@ -110,61 +109,53 @@ simulate_utilization_ts <- function(ts_sim, ts, r, tau){
 ongoing_option_cost <- function(ts, start, mat, euri, euri_sim, ftp, ftp_sim, pool_coef, p_cancel, p_typeone, beta_a, beta_b, sdmodel){
   
   #Work in month-intervals
-  T <- length(seq(from = start, to = mat, by = 'month')) - 1
+  T <- length(seq(from = start, to = mat, by = 'month')) 
   #Simulate the rest of the time utilizaiton time series for this client
   sim <- simulate_utilization_ongoing(start, mat, ts, pool_coef, p_cancel, p_typeone, beta_a, beta_b, sdmodel)
   ts_sim <- sim[[1]]
   tau <- sim[[2]]
-  if(tau == T){
-    return(0)
-  }
-  
-  r <- T - tau + 1
-  
-  start_ftp <- (ftp_data %>% filter(format(start, "%m-%Y") == month_year))[2]
-  cancel_ftp <- ftp_sim[tau]
-  
-  ftp_0 <- start_ftp + 0.0001 * (T / 12 - 2)
-  ftp_tau <- cancel_ftp + 0.0001 * (r / 12 - 2)
-  
-  dFTP_tau <- as.numeric(ftp_tau - ftp_0)
   start_pos <- as.numeric(rate_data %>% summarize(which(format(start, "%m-%Y") == month_year)))
   cancel_pos <- start_pos + tau
   stop_pos <- start_pos + T
   
+  start_ftp <- ftp[start_pos]
+  cancel_ftp <- (c(ftp, ftp_sim))[cancel_pos]
+  
+  ftp_0 <- (start_ftp) + 0.0001 * (T / 12 - 2)
+  ftp_tau <- (cancel_ftp) + 0.0001 * ((T-tau) / 12 - 2)
+  
+  if(tau == T){
+    ftp_tau = 0
+  }
+  
+  dFTP_tau <- as.numeric(ftp_tau - ftp_0)
+  
   rates <-  c(euri,euri_sim)[cancel_pos:stop_pos]
+  
   for(i in 1:length(rates)){
     rates[i] <- exp(-rates[i] * i / 12)
   }
-  
-  u <- c(ts,ts_sim)[tau:T]
+  u <- c(ts,ts_sim)[(cancel_pos-1):(stop_pos-1)]
   option_cost <- dFTP_tau * sum(u * rates)
 
-  return(option_cost[[1]])
+  rates <- c(euri,euri_sim)[(start_pos+1):(cancel_pos)]
+  for(i in 1:length(rates)){
+    rates[i] <- exp(-rates[i] * i / 12)
+  }
+  eos_denom <- sum(c(ts,ts_sim)[1:(tau)] * rates)
+  
+  return(list(option_cost, eos_denom))
 }
 
 #--- Simulate the utilization for a contract which has not ended yet at the "end" date of the data
 simulate_utilization_ongoing <- function(start, mat, ts, pool_coef, p_cancel, p_typeone, beta_a, beta_b, sdmodel){
   
-  T <- length(seq(from = start, to = mat, by = 'month')) - 1
+  T <- length(seq(from = start, to = mat, by = 'month')) 
   tau <- length(ts)
   r <- T - tau + 1
   ts_sim <- rep(0,r)
-  taustar <- r
+  taustar <- T
   constuse <- TRUE
-  if(length(ts) > 1){
-    if(var(ts) > 0){
-      constuse <- FALSE
-    }
-  }
-  else if(length(ts) == 1){
-    constuse <- ifelse((rbinom(1, 1, prob = (1-p_typeone)) == 1), TRUE, FALSE)
-  }
-  #If we have constant use then the simulated ts is just the first observation as use does not change over time
-  if(constuse){
-    ts_sim <- rep(ts[1],r)
-    return(list(ts_sim,r))
-  }
   
   p_t_less_tau <- pbeta(tau / T, shape1 = beta_a, shape2 = beta_b)
   #Given that the contract survived until time Tau, what is the probability of cancelling in (tau,T)?
@@ -173,6 +164,15 @@ simulate_utilization_ongoing <- function(start, mat, ts, pool_coef, p_cancel, p_
   #--- type 0: don't cancel before maturity
   #--- type 1: cancel before maturity
   type <- rbinom(1, 1, prob = p_cancel_cond)
+  
+  if(length(ts) > 1){
+    if(var(ts) > 0){
+      constuse <- FALSE
+    }
+  }
+  else if(length(ts) == 1){
+    constuse <- ifelse((rbinom(1, 1, prob = (1-p_typeone)) == 1), TRUE, FALSE)
+  }
   
   if(tau < 24){
     sigma <- rmixgamma(1, sdmodel$pi, sdmodel$mu, sdmodel$sd)
@@ -186,6 +186,13 @@ simulate_utilization_ongoing <- function(start, mat, ts, pool_coef, p_cancel, p_
   if(type == 1){
     taustar <- simulate_cond_cancel(beta_a, beta_b, tau, T)
     #Simulate random use until taustar, then use expectation for the rest
+    
+    #If we have constant use then the simulated ts is just the first observation as use does not change over time
+    if(constuse){
+      ts_sim <- rep(ts[1],r)
+      return(list(ts_sim,taustar))
+    }
+    
     ts_sim[1] <- max(min(pool_coef[1] + pool_coef[2]*ts[tau] + rnorm(1, mean = 0, sd = sigma), 1), 0)
     
     #Until the new cancellation time
@@ -200,12 +207,18 @@ simulate_utilization_ongoing <- function(start, mat, ts, pool_coef, p_cancel, p_
     
   }
   if(type == 0){
+    
+    if(constuse){
+      ts_sim <- rep(ts[1],r)
+      return(list(ts_sim,taustar))
+    }
+    
     ts_sim[1] <- max(min(pool_coef[1] + pool_coef[2]*ts[tau] + rnorm(1, mean = 0, sd = sigma), 1), 0)
     for(i in 2:r){
       ts_sim[i] <- max(min(pool_coef[1] + pool_coef[2]*ts_sim[i-1] + rnorm(1, mean = 0, sd = sigma), 1), 0)
     }
   }
-  print(taustar)
+  
   return(list(ts_sim,taustar))
 }
 
