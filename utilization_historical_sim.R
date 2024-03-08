@@ -47,7 +47,7 @@ hist_sim_option_cost_simple <- function(ts, start, mat, cancel, euri, euri_sim, 
   
   rates <-  c(euri,euri_sim)[cancel_pos:stop_pos]
   for(i in 1:length(rates)){
-    rates[i] <- exp(-rates[i] * i / 12)
+    rates[i] <- exp(-rates[i] * (i + tau) / 12)
   }
   
   option_cost <- dFTP_tau * sum(ts_sim * rates)
@@ -133,7 +133,7 @@ ongoing_option_cost <- function(ts, start, mat, euri, euri_sim, ftp, ftp_sim, po
   rates <-  c(euri,euri_sim)[cancel_pos:stop_pos]
   
   for(i in 1:length(rates)){
-    rates[i] <- exp(-rates[i] * i / 12)
+    rates[i] <- exp(-rates[i] * (i+tau) / 12)
   }
   u <- c(ts, ts_sim)[(tau-1):(T-1)]
   option_cost <- dFTP_tau * sum(u * rates)
@@ -175,7 +175,7 @@ simulate_utilization_ongoing <- function(start, mat, ts, pool_coef, p_cancel, p_
   }
   
   if(tau < 24){
-    sigma <- rmixgamma(1, sdmodel$pi, sdmodel$mu, sdmodel$sd)
+    sigma <- rmixweibull(1, sdmodel$pi, sdmodel$mu, sdmodel$sd)
   }
   else{
     comb_ts <- na.omit(cbind(ts,lag(ts)))

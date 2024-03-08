@@ -143,11 +143,10 @@ c6 <- lag_nonconst %>% group_by(Client) %>% summarize(vars = var(na.omit(Error))
 plot(hist(c6$vars))
 
 x <- sqrt(c6$vars)
-mod2_weibull <- mixfit(x, ncomp = 3, family = 'gamma', max_iter = 10000)
+mod2_weibull <- mixfit(x, ncomp = 3, family = 'weibull', max_iter = 10000)
 mod2_weibull
 plot(mod2_weibull)
 
-mod2_weibull
 #analyse if covid had an effect
 covid_date <- as.Date("01-3-2020", "%d-%m-%Y")
 lag_nonconst_covid <- lag_nonconst %>% mutate(covid = if_else(`Reporting date` >= covid_date,1,0))
@@ -277,7 +276,7 @@ hist(hs_costs , main = "Histogram of historical simulation option costs", xlab =
 summary(hs_costs)
 #check hs_costs vs maturity in years
 
-sum_data_cancel <- cancelled_data %>% group_by(Client) %>% slice(1)  
+sum_data_cancel <- cancelled_data %>% group_by(Client) %>% slice(1) %>% ungroup()
 sum_data_cancel <- cbind(sum_data_cancel, hs_costs)
 names(sum_data_cancel)[19] <- "Option cost"
 
@@ -288,26 +287,31 @@ ggplot(sum_data_cancel, aes(x = Client, y = `Option cost`, color = factor(Maturi
 
 ggplot(sum_data_cancel, aes(x = Maturity, y = `Option cost`, color = factor(Maturity))) +
   geom_point() +
-  labs(x = "Maturity", y = "Historical Option cost", color = "Maturity Length (Years)") +
+  labs(x = "Maturity", y = "Historical Option cost", color = "Maturity Length (Years)", title = "Historical Option Cost v.s. Maturity") +
   theme_minimal()
 
+npv_alphas <- rep(0,10)
+for(i in 1:10){
+  npv_alpha_iy <- sum_data_cancel %>% filter(Maturity == i) %>% reframe(sort(-`Option cost`))
+  npv_alphas[i] <- npv_alpha_iy[ceiling(0.90*length(npv_alpha_iy[[1]])),1][1]
+}
 
-npv_alpha <- sort(-hs_costs)[ceiling(0.99 * length(hs_costs))]
+#npv_alpha <- sort(-hs_costs)[ceiling(0.99 * length(hs_costs))]
 eos <- rep(0, length(hs_costs))
 
 count <- 1
 for(i in clients){
   client <- cancelled_data %>% filter(Client == i) 
   ts <- client$`Used amount`[1:(length(client$`Used amount`) - 1)]
-  
+  mat_years <- client$Maturity[1]
   start_pos <- as.numeric(rate_data %>% summarize(which(format(client$`Start date`[1], "%m-%Y") == month_year)))
   cancel_pos <- as.numeric(rate_data %>% summarize(which(format(client$`Cancellation date`[1], "%m-%Y") == month_year)))
   rates <- rate_data$`1Y`[(start_pos + 1):cancel_pos]
   for(j in 1:length(rates)){
-    rates[j] <- (1 + rates[j]/12) ^ (-j)
+    rates[j] <- exp(-rates[j] * j / 12)
   }
   
-  eos[count] <- npv_alpha / sum(rates * ts)
+  eos[count] <- npv_alphas[mat_years] / sum(rates * ts)
   count <- count + 1
 }
 
@@ -328,6 +332,8 @@ ggplot(sum_data_cancel, aes(x = Maturity, y = `EOS`, color = factor(Maturity))) 
   labs(x = "Maturity", y = "EOS", color = "Maturity Length (Years)") +
   theme_minimal()
 
+
+
 #---Check if variance determines option cost
 sum_data_cancel <- cbind(sum_data_cancel, client_var)
 names(sum_data_cancel)[21] <- "Client var"
@@ -344,7 +350,12 @@ ggplot(sum_data_cancel, aes(x = `Client var`, y = `EOS`, color = factor(Maturity
 
 ######################################################################################################
 #--- Option cost & EOS for ongoing clients
-data_ongoing <- data %>% group_by(Client) %>% filter(last(`Reporting date`) != last(`Maturity date`)) %>% filter(is.na(`Cancellation date`))
+par(mfrow=c(2,2))
+
+set.seed(1)
+data_ongoing <- data %>% group_by(Client) %>% 
+  filter(last(`Reporting date`) != last(`Maturity date`)) %>% 
+  filter(is.na(`Cancellation date`) & `Maturity` == 10)
 ongoing_clients <- unique(as.numeric(data_ongoing$Client))
 ongoing_option_cost_df <- matrix(0,nrow = 100, ncol = length(ongoing_clients))
 ongoing_eos_df <- matrix(0,nrow = 100, ncol = length(ongoing_clients))
@@ -360,9 +371,16 @@ for(i in ongoing_clients){
   count <- count + 1
 }
 
-NPV_alpha_ongoing <- sort(-as.vector(ongoing_option_cost_df))[0.999 * 100 * length(ongoing_clients)]
-summary(as.vector(ongoing_eos_df))
-hist(ongoing_option_cost_df)
-hist(ongoing_eos_df*NPV_alpha_ongoing)
-
+NPV_alpha_ongoing <- sort(-as.vector(ongoing_option_cost_df))[0.99 * 100 * length(ongoing_clients)]
+summary(as.vector(ongoing_option_cost_df))
+summary(as.vector(ongoing_eos_df*NPV_alpha_ongoing))
+NPV_alpha_ongoing
+hist(ongoing_option_cost_df, col = "darkgreen",
+     main = "Ongoing 10Y maturity NPV option cost",
+     xlab = "NPV option cost")
+hist(ongoing_eos_df*NPV_alpha_ongoing, col = "blue2",
+     main = "Ongoing 10Y maturity EOS, 99% alpha",
+     xlab = "EOS")
+number_per_year <- c(12,23,28,43,57,62,71,87,98,105)
+sum(number_per_year)
 ######################################################################################################
