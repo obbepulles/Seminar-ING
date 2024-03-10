@@ -59,7 +59,52 @@ ls_vasi_joint <- function(x, y){
   sy <- sqrt(var(mody$residuals)* 12)
   return(c(ax, rx, sx, ay, ry, sy, rho))
 }
+vasi_sim <- function(par, n, lastdata){
+  a <- par[1]
+  r <- par[2]
+  v <- par[3]
+  dt <- 1 / 12
+  sim <- rep(0, n)
+  for(i in 1 : n){
+    m <- lastdata * exp(- a * i * dt) +  r * ( 1- exp(-a * i * dt))
+    var <- v / (2 * a) * (1 - exp(-2 * a * i *dt))
+    sim[i] <- rnorm(1, mean = m, sd = sqrt(var))
+  }
+  return(sim)
+}
+vasi_joint_sim <- function(par, n, lastdata1, lastdata2){
+  ax <- par[1]
+  rx <- par[2]
+  vx <- par[3]^2
+  ay <- par[4]
+  ry <- par[5]
+  vy <- par[6]^2
+  rho <- par[7]
+  dt <- 1 / 12
+  sim1 <- rep(0, n)
+  sim2 <- rep(0, n)
+  for(i in 1 : n){
+    m1 <- lastdata1 * exp(- ax* i * dt) +  rx * ( 1- exp(-ax * i * dt))
+    m2 <- lastdata2 * exp(- ay* i * dt) +  ry * ( 1- exp(-ay * i * dt))
+    var1 <- vx / (2 * ax) * (1 - exp(-2 * ax * i *dt))
+    var2 <- vy / (2 * ay) * (1 - exp(-2 * ay * i *dt))
+    ex <- rnorm(1, mean = 0, sd = 1)
+    ey <- rho * ex + sqrt(1 - rho^2)*rnorm(1, mean = 0, sd = 1)
+    sim1[i] <- m1 + sqrt(var1) * ex
+    sim2[i] <- m2 + sqrt(var2) *ey
+  }
+  return(cbind(sim1, sim2))
+}
 jointpar_all <- ls_vasi_joint(er, ftp_2y)
+jointpar_all_ind <- jointpar_all
+jointpar_all_ind[3] <- jointpar_all[3]^2
+jointpar_all_ind[6] <- jointpar_all[6]^2
 x <- 120 ##x is number of months
-ftp_sim <- vasi_forecast(jointpar_all[4:6], x, ftp_2y[length(ftp_2y)])
-euri_sim <- vasi_forecast(jointpar_all[1:3], x,  er[length(er)])
+  #this is LS estimator for individual 
+ftp_sim <- vasi_sim(jointpar_all_ind[4:6], x, ftp_2y[length(ftp_2y)])
+euri_sim <- vasi_sim(jointpar_all_ind[1:3], x,  er[length(er)])
+  #this is LS estimator for joint simulation
+sim_joint <- vasi_joint_sim(jointpar_all, x, er[length(er)], ftp_2y[length(ftp_2y)])
+ftp_sim_joint <- sim_joint[, 2]
+euri_sim_joint <- sim_joint[, 1]
+

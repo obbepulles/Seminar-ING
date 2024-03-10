@@ -5,6 +5,13 @@ library(sandwich)
 library("aTSA")
 library(forecast)
 library(generics)
+library(mixR)
+library(copula)
+library(MASS)
+library(yuima)
+library(stats4)
+library(expm)
+library(Matrix)
 data <- read_xlsx("hypothetical_data_set.xlsx", skip = 1)
 FTP <- as.data.frame(data[, 2 : 6])
 DFTP <- as.data.frame(data[ , 1 ])
@@ -24,12 +31,10 @@ vasi_ml <- function(x){
 vasi_forecast <-  function(par, n, lastdata){
   a <- par[1]
   r <- par[2]
-  v <- par[3]
   sim <- rep(0, n)
   sim[1] <- lastdata * exp(-a / 12) + r * (1 - exp(-a / 12))
   for(i in 2 : n){
     sim[i] <- sim[(i - 1)] * exp(-a / 12) + r * (1 - exp(-a / 12))
-    print(sim[i])
   }
   return(sim)
 }
@@ -37,62 +42,58 @@ vasi_sim <- function(par, n, lastdata){
   a <- par[1]
   r <- par[2]
   v <- par[3]
+  dt <- 1 / 12
   sim <- rep(0, n)
   for(i in 1 : n){
-    m <- lastdata * exp(- a * t)
+    m <- lastdata * exp(- a * i * dt) +  r * ( 1- exp(-a * i * dt))
+    var <- v / (2 * a) * (1 - exp(-2 * a * i *dt))
+    sim[i] <- rnorm(1, mean = m, sd = sqrt(var))
   }
+  return(sim)
 }
-sim_sarima <- function(n, p, I, q, P, Q, s, pv, qv, Pv, Qv, c, model){
-  res_0 <- model$residuals
-  mu <- mean(res_0)
-  sd <- sd(res_0)
-  res <- rnorm(n, mean = mu, sd = sd)
-  if (I == 0){  
-    resa <- c(res_0, res)
-    sim <- c(ftp_2y_ts, rep(0, n))
-    l <- length(ftp_2y_ts)
-    for(i in (l + 1) : (l + n)){
-      sP <- Pv * sim[(i - s) : (i - s - P + 1)]
-      sQ <- Qv * resa[(i - s) : (i - s - Q + 1)] 
-      sP[is.na(sP)] <- 0
-      sQ[is.na(sQ)] <- 0
-      sim[i] <- sum(pv * sim[(i - 1) : (i - p)]) + sum(qv * sim[(i - 1) : (i - q)]) + c + sum(sP) + sum(sQ)
-    }
-    return(sim[(l + 1) : (l + n)])
-  }
+ls_vasi_joint <- function(x, y){
+  x1 <- x[1 : (length(x) - 1)]
+  x2 <- x[2 : length(x)]
+  y1 <- y[1 : (length(y) - 1)]
+  y2 <- y[2 : length(y)]
+  modx <- lm(x2 ~x1)
+  mody <- lm(y2 ~y1)
+  ax <- (modx$coefficients[2] - 1) * (-12)
+  rx <- modx$coefficients[1] * 12 / ax
+  sx <- sqrt(var(modx$residuals)* 12)
+  rho <- cor(modx$residuals, mody$residuals)
+  ay <- (mody$coefficients[2] - 1) * -12
+  ry <- mody$coefficients[1] * 12 / ay
+  sy <- sqrt(var(mody$residuals)* 12)
+  return(c(ax, rx, sx, ay, ry, sy, rho))
+}
+vasi_joint_sim <- function(par, n, lastdata1, lastdata2){
+  ax <- par[1]
+  rx <- par[2]
+  vx <- par[3]^2
+  ay <- par[4]
+  ry <- par[5]
+  vy <- par[6]^2
+  rho <- par[7]
   
-  else{
-    dif <- diff(ftp_2y, lag = I)
-    l <- length(dif)
-    sim <- rep(0, n)
-    resa <- c(res_0, res)
-    sp <- pv * dif[(l) : (l - p + 1)]
-    sq <- qv * res_0[(l) : (l - q + 1)]
-    sP <- Pv * dif[(l - s + 1) : (l - s - P + 2)]
-    sQ <- Qv * resa[(l - s + 1) : (l - s - Q + 2)]
-    sp[is.na(sp)] <- 0
-    sq[is.na(sq)] <- 0
-    sP[is.na(sP)] <- 0
-    sQ[is.na(sQ)] <- 0
-    delta <- sum(sp) + sum(sq) + c + sum(sP) + sum(sQ)
-    sim [1] <- ftp_2y[length(ftp_2y)] + delta
-    dif <- c(dif, delta)
-    for(i in 2 : n){
-      sp <- pv * dif[(l + i) : (l + i- p + 1)]
-      sq <- qv * res_0[(l + i) : (l + i- q + 1)]
-      sP <- Pv * dif[(l + i - s + 1) : (l + i - s - P + 2)]
-      sQ <- Qv * resa[(l + i - s + 1) : (l + i - s - Q + 2)]
-      sp[is.na(sp)] <- 0
-      sq[is.na(sq)] <- 0
-      sP[is.na(sP)] <- 0
-      sQ[is.na(sQ)] <- 0
-      delta <- sum(sp) + sum(sq) + c + sum(sP) + sum(sQ)
-      sim [i] <- sim[(i - 1)] + delta
-      dif <- c(dif, delta)
-    }
-    return(sim)
-  }
 }
+vasi_fitted <- function(data, par){
+  dt <- 1/12
+  n<- length(data)
+  a <- par[1]
+  r <- par[2]
+  v <- par[3]
+  sim <- rep(0, n)
+  sim[1] <- data[1]
+  for(i in 2 : n){
+    mu <- sim[1] * exp(-a * i * dt) + r * ( 1- exp(-a * i * dt))
+    var <- v^2 / (2 * a) * (1 - exp(-2 * a * i *dt)) 
+    print(var)
+    sim[i] <- rnorm(1, mean = mu, sd = sqrt(var))
+  }
+  return(sim)
+}
+
 #--------------
 #overall data visualization <- still need to fix the x-axis to time 
 plot(DFTP, FTP[,1], type = "l")
@@ -144,29 +145,13 @@ rmse(cancel_ftp, c(1 : (length(ftp_2y) -5)) * mean(dif_2y) )
 lm(cancel_ftp ~ c(1 : (length(ftp_2y) - 5)))
 mean(dif_2y)
 cancel_ftp
-#------ with consideration of interest rate leave it later can be ignored now 
-FTP_i <- cbind((FTP[, 1] - 0.001), FTP[ , 2:3], FTP[ , 5])
-ER_i <- ER[ , 2:5]
-plot(ftp_2y , type = "l" , ylim = c(-0.01 , 0.02))
-lines(ER[ , 1], col = "blue")
-plot(diff(ftp_2y), type = "l" , ylim = c(-0.01 , 0.01))
-lines(diff(ER[ , 1]) , col = "blue")
 #------ use for autocorrelation it need to be garch later on, it shows high autocorrelation
 lines(diff(ER[ , 1]), col = "red")
 kk <- lm(ftp_2y~ ER[ , 1])
 adf.test(diff(ftp_2y))
 print(acf(ftp_2y^2))
 #------- trying to do normal draws from dif_ftp to predict
-plot(density(diff(ftp_2y)))
-library(mixR)
-plot(pacf(dif_2y))
-plot(acf(dif_2y))
-plot(dif_2y, type = "l")
-abline(h = mean(dif_2y))
-x <- lm(dif_2y~diff(ER[,1]))
-plot(acf(dif_2y^2))
 Box.test(dif_2y, lag = 12, type = "Ljung-Box")
-Box.test(dif_2y^2, lag = 12, type = "Ljung-Box")
 ##Ljung-box shows that it should be iid as it is not significant
 train_dif <-  dif_2y[1 : 90]
 train <- length(train_dif)
@@ -224,23 +209,10 @@ plot(norm_predict, type = "l")
 plot(test_dif, type = "l") ## this is very bad
 pacf(dif_2y)
 acf(dif_2y)
-#----ARIMA(1,1,1)
-library(forecast)
-arima111 <- Arima(train_ftp_ts, order = c(1, 1, 1), include.mean = T, method = "CSS")
-sim_arima111 <- forecast(arima111, h = 29)
-plot(sim_arima111)
-lines(ftp_2y_ts, col = "blue")
-plot(sim_ar11$residuals)
-rmse_arima111 <- rmse(test_ftp, sim_arima111$mean)
-acf(arima111$residuals)
-#AR1 package
-ar1p <- Arima(train_ftp_ts, order = c( 1, 0, 0), method = "CSS",  include.constant =T )
-ar1p$coef
-sim_ar1p <- forecast(ar1p, h = 29)
-plot(sim_ar1p)
-rmse_ar1p <- rmse(test_ftp, sim_ar1p$mean)
 #--- ARIMA( 0 ,1 , 1)
 arima011 <- Arima(train_ftp_ts, order = c(0, 1, 1), include.mean = T, method = "CSS")
+plot(arima011$fitted, type= "l", col = "green")
+lines(train_ftp_ts, col = "blue")
 sim_arima011 <- forecast(arima011, h = 29)
 rmse_arima011 <- rmse(test_ftp, sim_arima011$mean)
 plot(sim_arima011)
@@ -265,7 +237,7 @@ lines(ftp_2y_ts, col = "black")
 lines(arima1210$fitted, col = "cornflowerblue", lty = 2, lwd = 1.2)
 legend("bottomleft", legend = c("fitted value","actual value", "predicted value"), col = c("cornflowerblue","black", "cyan2"), lty = c(2 , 1, 1), lwd = c(1, 1, 2))
 #--- SARIMA()
-sarima01012 <- arima(train_ftp_ts, order = c(1, 0, 0), seasonal = c(0,0,1,4), method = "ML")
+sarima01012 <- arima(train_ftp_ts, order = c(0, 1, 0), seasonal = c(0,0,1,12), method = "ML")
 sim_sarima0112 <- forecast(sarima01012, h = 29)
 rmse_sarima0112 <- rmse(test_ftp, sim_sarima0112$mean)
 plot(sim_sarima0112)
@@ -286,17 +258,12 @@ plot(ftp_2y[(train + 2): length(ftp_2y)], type = "l")
 plot(expected_forecast)
 rmse_vasi_paper <- rmse(test_ftp, va)
 #----GARCH directly to FTP
-# Assuming 'returns' is your financial return time series
 library(rugarch)
 spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)))
 fit <- ugarchfit(spec, data = train_ftp_ts)
 sim_GARCH <- ugarchforecast(fit, n.ahead = 29)
 #fitted(sim_GARCH)[1 : 29]
 rmse_GARCH <- rmse(test_ftp, fitted(sim_GARCH))
-#plot(sim_GARCH)
-#lines(ftp_2y_ts)
-#---- labor Hamilton for FTP -- EM algorithm 
-  #initial 
 set.seed(123)
 T <- length(ftp_2y)
 p_ij_t <- matrix(0, nrow= 4, ncol = T)
@@ -308,7 +275,7 @@ count <- 0
 loop <- 1
 
 while(count < 1000){    
-  #M-step 
+  #M-step pij_t is t|T
   p11 <- (sum(p_ij_t[1 , ]) - p_ij_t[1 , 1]) / (sum(p_ij_t[1 , ]) - p_ij_t[1, T] + sum(p_ij_t[2, ]) - p_ij_t[2, T])
   p22 <- (sum(p_ij_t[4 , ]) - p_ij_t[4 , 1]) / (sum(p_ij_t[4 , ]) - p_ij_t[4, T] + sum(p_ij_t[3, ]) - p_ij_t[3, T])
   mu_1 <- sum((p_ij_t[1 , ] + p_ij_t[2, ]) * ftp_2y) / (sum(p_ij_t[1 , ]) + sum(p_ij_t[2 , ]))
@@ -343,7 +310,7 @@ while(count < 1000){
 t_test <- (mu_1 - mu_2) / sqrt(sig_1 / T + sig_2 / T)
 t_test
 p_value <- 2 * (1 - pt(abs(t_test),  df = ( 2*T  - 2))) # this shows there is no effect 
-qt(0.95, df = 2*T -1)
+pt(abs(t_test),  df = ( 2*T  - 2))
 p_value
 #--- function of dFTP 
 dFTP_func <- function(tau, data, T){
@@ -386,19 +353,14 @@ ftp_forecast <- function(n, type, x){
     return(sim)
   }
 }
-m <- cbind(ftp_forecast(29, 1, train_ftp), ftp_forecast(29, 2, train_ftp), ftp_forecast(29, 3, train_ftp), ftp_forecast(29, 4, train_ftp), ftp_forecast(29, 5, train_ftp), ftp_forecast(29, 6, train_ftp))
+#--- empirical cdf of ftpm <- cbind(ftp_forecast(29, 1, train_ftp), ftp_forecast(29, 2, train_ftp), ftp_forecast(29, 3, train_ftp), ftp_forecast(29, 4, train_ftp), ftp_forecast(29, 5, train_ftp), ftp_forecast(29, 6, train_ftp))
 plot(ts(test_ftp), ylim = c(-0.0025, 0.0005), col = "red3", type = "l", lwd = 3, , ylab = "FTP in test set", xlab= "time index")
-lines(ts(m[, 1]), lty = 1, col = "blue", lwd = 2)
 lines(ts(m[, 2]), lty = 2, col = "green4", lwd = 2)
-lines(ts(m[, 3]), lty = 3, col = "brown4", lwd = 2)
 lines(ts(m[, 4]), lty = 4, col = "orange2", lwd = 2)
 lines(ts(m[, 5]), lty = 5, col = "cornflowerblue", lwd = 2)
 lines(ts(m[, 6]), lty = 6, col = "pink", lwd = 2)
-legend("topright", legend = c("Actual", "SARIMA", "GARCH (1, 1)", "AR1", "ARIMA(0, 1, 1)", "RW", "Vasicek"), col = c("red3","blue", "green4", "brown4", "orange2", "cornflowerblue", "pink"), lty = c(1 , 1, 2, 3, 4, 5, 6), lwd = c(3, 2, 2, 2, 2, 2, 2))
-#--- empirical cdf of ftp
+legend("topright", legend = c("Actual", "GARCH (1, 1)", "ARIMA(0, 1, 1)", "RW", "Vasicek"), col = c("red3", "green4", "orange2", "cornflowerblue", "pink"), lty = c(1 , 2, 4, 5, 6), lwd = c(3, 2, 2, 2, 2))
 par(mfrow = c(1, 1))
-library(copula)
-library(MASS)
 emp_ftp <- rank(ftp_2y)/ (length(ftp_2y) + 1)
 emp_eur <- rank(ER[, 1])/ (length(ER[, 1]) + 1)
 plot(emp_ftp, emp_eur, pch = 16, col = "blue") ## dependence on right tail -> Gumble 
@@ -440,9 +402,6 @@ log_likelihood <- function(par, data) {
   for(i in 1 : (length(obs2_1) + 1)){
     mu <- c(obs1_1[i] + a_R *(r_R - obs1_1[i]) * dt , obs2_1[i] * + a_ftp *(r_ftp - obs2_1[i]) * dt)
     cov_matrix <- cbind(c(sig_R^2 * dt, (sig_R * sig_ftp * rho_j * dt)), c((sig_R * sig_ftp * rho_j * dt), (sig_ftp^2 * (1 - rho_j^2) * dt)))
-    #print(pdf_mvn(obs[i, ], mu, cov_matrix))
-    #print(mu)
-    #print(cov_matrix)
     ll1 <- pdf_mvn(obs[i, ], mu, cov_matrix)
     print("observation set 1")
     print(obs[i, ])
@@ -460,40 +419,16 @@ log_likelihood <- function(par, data) {
   }
   return(-ll)  # Minimize negative log-likelihood
 }
-initial_params <- c(vasi_ml(ER[ , 1]), vasi_ml(ftp_2y), cor(ER[, 1], ftp_2y))
-joint_data <- cbind(ER[ , 1], ftp_2y)
-result <- optim(par = initial_params, fn = log_likelihood, data = joint_data, method = "L-BFGS-B", lower=c(-1, -0.05, 0.0000000001, -1, -0.05, 0.000000001, -0.5), upper = c(1, 0.5, 0.5, 1, 0.5, 0.5, 0.5))
-result$par
-log_likelihood(initial_params, joint_data)
 initial_params
 #dmvnorm(c(0.0143, 0.0022), mean = c(0.012, -0.0000000144), sigma = cbind(c(4.054355e-13, 3.011445e-13), c(3.011445e-13, 2.960252e-13)))
-matrix(0, nrow = 2, ncol = 2)
-(ftp_2y[2])
-(ER[, 1][2])     
-dmvnorm(c(0, 0), mean = c(0.012, -0.0000000144), sigma = cbind(c(1, 0.6), c(0.6, 1)))
-pdf_mvn(c(0, 0), c(0.012,  -0.0000000144), cbind(c(1, 0.6), c(0.6, 1)))
 #---- other method: ls calibration for test 
-ls_vasi_joint <- function(x, y){
-  x1 <- x[1 : (length(x) - 1)]
-  x2 <- x[2 : length(x)]
-  y1 <- y[1 : (length(y) - 1)]
-  y2 <- y[2 : length(y)]
-  modx <- lm(x2 ~x1)
-  mody <- lm(y2 ~y1)
-  ax <- (modx$coefficients[2] - 1) * (-12)
-  rx <- modx$coefficients[1] * 12 / ax
-  sx <- sqrt(var(modx$residuals)* 12)
-  rho <- cor(modx$residuals, mody$residuals)
-  ay <- (mody$coefficients[2] - 1) * -12
-  ry <- mody$coefficients[1] * 12 / ay
-  sy <- sqrt(var(mody$residuals)* 12)
-  return(c(ax, rx, sx, ay, ry, sy, rho))
-}
 er <- ER[, 1]
 #--forecast ability in test set
 er_test <- er[(length(train_ftp) + 1) : length(er)]
 train_er <-er[1 : length(train_ftp)]
 jointpar <- ls_vasi_joint(train_er, train_ftp)
+vasi_train_ftp <- vasi_forecast(jointpar[4:6], 29, train_ftp[length(train_ftp)])
+vasi_train_er <- vasi_forecast(jointpar[1:3], 29, train_er[length(train_er)])
 plot(ts(test_ftp), ylim = c(-0.006, 0.01), col = "red3", type = "l", lwd = 3, , ylab = "FTP in test set", xlab= "time index")
 lines(vasi_forecast(jointpar[4:6], 29, train_ftp[length(train_ftp)]), col = "deeppink", lwd = 2, lty = 2)
 lines(er_test, col = "seagreen", lwd = 3)
@@ -520,42 +455,29 @@ par(mfrow = c(1, 2))
 acf(dif_2y)
 pacf(dif_2y)
 par(mfrow = c(1, 1))
-# ---- DF?
-df6m <- 1 / (1 + ER[, 1])
-df1y <- 1 / (1 + ER[, 2])
-df3y <- 1 / (1 + ER[ , 3])
-df5y <- 1 / (1 + ER[ , 4])
-df10y <- 1 / (1 + ER[ , 5])
-plot(df6m, type = "l") ## good
-k <- 1 / (1 + vasi_forecast(c(a_em_ls, r_em_ls, sig_em_ls), 120, ER[ ,2 ] [1]))
-lines(k)
-product1 <- df6m * ftp_2y
-product2 <- df1y * ftp_2y
-product3 <- df3y * ftp_2y
-product4 <- df5y * ftp_2y
-product5 <- df10y * ftp_2y
-plot(df10y, df1y)
-emp_cdf_product1 <- rank(product1) / (length(product1) + 1)
-emp_cdf_product2 <- rank(product2) / (length(product2) + 1)
-emp_cdf_product3 <- rank(product3) / (length(product3) + 1)
-emp_cdf_product4 <- rank(product4) / (length(product4) + 1)
-emp_cdf_product5 <- rank(product5) / (length(product5) + 1)
-plot(emp_cdf_product1, emp_cdf_product5)
-cor(dif_2y, diff(er, lag = 1))
-summary(lm(dif_2y~diff(er, lag = 1)))
-adf.test(log(ftp_2y + 1))
-adf.test(log(er + 1))
-summary(lm(log(ftp_2y + 1)~log(er + 1)))
-cor(diff(log(ftp_2y +1),lag = 1), diff(log(er + 1), lag = 1)) 
-cor(dif_2y, diff(er, lag = 1))
-plot(log(er +1 ))
-summary(lm(diff(log(ftp_2y +1),lag = 1)~ diff(log(er + 1), lag = 1)))
-cor(dif_2y, diff(er, lag = 1))
-plot(ftp_2y, er)
-plot(dif_2y, diff(er, lag = 1))
-cor(ftp_2y, er, method = "spearman")
-res_ftp_mod <- lm(ftp_2y[2:120]~ftp_2y[1:119])$residuals
-res_er_mod <- lm(er[2:120]~er[1:119])$residuals
-emp_res_er <- rank(res_er_mod) / (length(res_er_mod) + 1)
-emp_res_ftp <- rank(res_ftp_mod) / (length(res_ftp_mod) + 1)
-plot(emp_res_ftp, emp_res_er)
+##--simulation
+plot(vasi_sim(jointpar[4 : 6], 120 , ftp_2y[1] ), type = "l")
+lines(ftp_2y, col = "green")
+# ---- mixture model
+mix_norm1 <- mixfit(train_ftp, ncomp= 3, family = "norm")
+mix_norm1$mu
+exp_mixr <- sum(mix_norm1$pi* mix_norm1$mu)
+test_mix <- rep(exp_mixr, length(test_ftp))
+rmse(test_ftp, test_mix)
+plot(ftp_2y, type = "l")
+lines(rep(exp_mixr, 120))
+lines(rep(mean(ftp_2y), 120), col = "red")
+rmse(er_test, train_er[length(train_er)])
+#-----joint Vasicek discretization
+  #Yt = exp(-er *(t-a) )FTP_t)
+Y_a <- function(a, R, F){
+  r <- R[a : length(R)]
+  f <- F[a : length(F)]
+  Y <- rep(0, length(r))
+  dt <- 1/ 12
+  for(i in 1 : length(r)){
+    Y[i] <- exp(-r[i] * (i - 1) * 1/ 12) * f[i]
+  }
+  return(Y)
+}
+  #Euler scheme 
