@@ -423,4 +423,4 @@ for(j in 1:10){
 hist(EOS_matrix[,1])
 summary(EOS_matrix)
 summary(NPV_matrix)
-
+npv_alphas_sim
