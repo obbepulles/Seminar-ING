@@ -208,30 +208,30 @@ n <- filtered_df %>% summarize(x = n_distinct(Client))
 arima_model <- rep(0,18)
 error_counter <- rep(0,18)
 
-for(i in 1:(length(n$Client))){
- util <- filtered_df %>% filter(Client == n$Client[i])
- util <- util$`Used amount`
- for(j in 1:18){
-   
-   tryCatch(
-     {
-       arima_model[j] <- AIC(arima(util, order = param_grid[j, ], method = "ML"))
-       
-     },
-     error = function(e) {
-       error_counter[j] <<- error_counter[j] + 1
-       NA
-     }
-   )
- }
- 
- aic_vector <- aic_vector + arima_model
- 
-}
+# for(i in 1:(length(n$Client))){
+#  util <- filtered_df %>% filter(Client == n$Client[i])
+#  util <- util$`Used amount`
+#  for(j in 1:18){
+#    
+#    tryCatch(
+#      {
+#        arima_model[j] <- AIC(arima(util, order = param_grid[j, ], method = "ML"))
+#        
+#      },
+#      error = function(e) {
+#        error_counter[j] <<- error_counter[j] + 1
+#        NA
+#      }
+#    )
+#  }
+#  
+#  aic_vector <- aic_vector + arima_model
+#  
+# }
 
 #AR(1) model best on average
-aic_vector <- aic_vector / (length(n$Client) - error_counter)
-pos <- param_grid[which(aic_vector == min(aic_vector)), ]
+#aic_vector <- aic_vector / (length(n$Client) - error_counter)
+#pos <- param_grid[which(aic_vector == min(aic_vector)), ]
 
 
 cancelled_data <- data %>% group_by(Client) %>% filter(!is.na(`Cancellation date`))
@@ -363,7 +363,8 @@ count <- 1
 for(i in ongoing_clients){
   client <- data_ongoing %>% filter(Client == i)
   for(j in 1:100){
-    x <- ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim, ftp_2y, ftp_sim, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
+    #This uses the JOINT simulation for Euribor and FTP
+    x <- ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim_joint, ftp_2y, ftp_sim_joint, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
     ongoing_option_cost_df[j, count] <- x[[1]]
     ongoing_eos_df[j, count] <- x[[2]]
   }
