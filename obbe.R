@@ -385,3 +385,41 @@ hist(ongoing_eos_df*NPV_alpha_ongoing, col = "blue2",
 number_per_year <- c(12,23,28,43,57,62,71,87,98,105)
 sum(number_per_year)
 ######################################################################################################
+#--- Simulation of completely hypothetical clients with a completely random path for each risk driver for each client
+
+set.seed(1)
+N <- 10000
+NPV_matrix <- matrix(data = NA, nrow = N, ncol = 10)
+EOS_matrix <- matrix(data = NA, nrow = N, ncol = 10)
+npv_alphas_sim <- rep(NA, 10)
+alpha <- 0.99
+
+for(j in 1:10){  
+  FTP_0 <- ftp_2y[120] + 0.0001 * (j - 2)
+  for(i in 1:N){
+  type_var <- rbinom(1, 1, p_typeone)
+  cancel_client <- rbinom(1,1, p_cancel) 
+  tau <- 1
+   
+  
+  sim_joint <- vasi_joint_sim(jointpar_all, j*12, er[120], ftp_2y[120])
+  ftp_sim_joint <- sim_joint[, 2]
+  euri_sim_joint <- sim_joint[, 1]
+  
+  if(cancel_client == 1){
+    tau <- rbeta(1, beta_coef[1], beta_coef[2])
+  }
+  
+  volatility <- rmixgamma(1, mod2_weibull$pi, mod2_weibull$mu, mod2_weibull$sd)
+  utilization <- simulate_client_utilization(pool_coef, tau, j, volatility, type_var)
+  NPV_matrix[i, j] <- simulate_option_cost(euri_sim_joint, ftp_sim_joint, j, tau, utilization, FTP_0)
+  EOS_matrix[i, j] <- simulate_eos_denom(tau, j, euri_sim_joint, utilization)
+  }
+  
+  npv_alphas_sim[j] <- (sort(-NPV_matrix[, j]))[N * alpha] 
+  EOS_matrix[, j] <- npv_alphas_sim[j] * EOS_matrix[, j]
+  
+}
+hist(EOS_matrix[,1])
+summary(EOS_matrix)
+
