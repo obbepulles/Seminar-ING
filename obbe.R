@@ -171,6 +171,7 @@ non_matured <- data %>% group_by(Client) %>%
   summarize(ind = n_distinct(Client)) %>%
   summarize(ncm = sum(ind))
 p_cancel <- (cancel / (non_cancel_matured + cancel))[[1]]
+p_cancel <- 0.1766
 ######################################################################################################
 #--- Calculate probability of being type 1 (constant utilization)
 
@@ -355,7 +356,7 @@ par(mfrow=c(2,2))
 set.seed(1)
 data_ongoing <- data %>% group_by(Client) %>% 
   filter(last(`Reporting date`) != last(`Maturity date`)) %>% 
-  filter(is.na(`Cancellation date`) & `Maturity` == 10)
+  filter(is.na(`Cancellation date`) & `Maturity` == 3)
 ongoing_clients <- unique(as.numeric(data_ongoing$Client))
 ongoing_option_cost_df <- matrix(0,nrow = 100, ncol = length(ongoing_clients))
 ongoing_eos_df <- matrix(0,nrow = 100, ncol = length(ongoing_clients))
@@ -365,8 +366,8 @@ for(i in ongoing_clients){
   for(j in 1:100){
     #This uses the JOINT simulation for Euribor and FTP
     x <- ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim_joint, ftp_2y, ftp_sim_joint, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
-    ongoing_option_cost_df[j, count] <- x[[1]]
-    ongoing_eos_df[j, count] <- x[[2]]
+    ongoing_option_cost_df[j, count] <- x[[1]] * 10^6
+    ongoing_eos_df[j, count] <- x[[2]] / 10^6
   }
   #ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim, ftp_data, ftp_sim, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
   count <- count + 1
@@ -375,7 +376,7 @@ for(i in ongoing_clients){
 NPV_alpha_ongoing <- sort(-as.vector(ongoing_option_cost_df))[0.99 * 100 * length(ongoing_clients)]
 summary(as.vector(ongoing_option_cost_df))
 summary(as.vector(ongoing_eos_df*NPV_alpha_ongoing))
-NPV_alpha_ongoing
+  NPV_alpha_ongoing
 hist(ongoing_option_cost_df, col = "darkgreen",
      main = "Ongoing 10Y maturity NPV option cost",
      xlab = "NPV option cost")
@@ -386,13 +387,14 @@ number_per_year <- c(12,23,28,43,57,62,71,87,98,105)
 sum(number_per_year)
 ######################################################################################################
 #--- Simulation of completely hypothetical clients with a completely random path for each risk driver for each client
-
+par(mfrow=c(5,2))
 set.seed(1)
-N <- 10000
+N <- 20000
 NPV_matrix <- matrix(data = NA, nrow = N, ncol = 10)
+EOS_denom_matrix <- matrix(data = NA, nrow = N, ncol = 10)
 EOS_matrix <- matrix(data = NA, nrow = N, ncol = 10)
 npv_alphas_sim <- rep(NA, 10)
-alpha <- 0.99
+
 
 for(j in 1:10){  
   FTP_0 <- ftp_2y[120] + 0.0001 * (j - 2)
@@ -412,15 +414,23 @@ for(j in 1:10){
   
   volatility <- rmixgamma(1, mod2_weibull$pi, mod2_weibull$mu, mod2_weibull$sd)
   utilization <- simulate_client_utilization(pool_coef, tau, j, volatility, type_var)
-  NPV_matrix[i, j] <- simulate_option_cost(euri_sim_joint, ftp_sim_joint, j, tau, utilization, FTP_0)
-  EOS_matrix[i, j] <- simulate_eos_denom(tau, j, euri_sim_joint, utilization)
+  NPV_matrix[i, j] <- simulate_option_cost(euri_sim_joint, ftp_sim_joint, j, tau, utilization, FTP_0) * 10^6
+  EOS_denom_matrix[i, j] <- simulate_eos_denom(tau, j, euri_sim_joint, utilization) / 10^6
   }
-  
-  npv_alphas_sim[j] <- (sort(-NPV_matrix[, j]))[N * alpha] 
-  EOS_matrix[, j] <- npv_alphas_sim[j] * EOS_matrix[, j]
-  
 }
-hist(EOS_matrix[,1])
-summary(EOS_matrix)
+
+alpha <- 0.999
+for(j in 1:10){
+  npv_alphas_sim[j] <- (sort(-NPV_matrix[, j]))[ceiling(N * alpha)] 
+  EOS_matrix[, j] <- npv_alphas_sim[j] * EOS_denom_matrix[, j]  
+}
+
+hist(NPV_matrix[,10], col = "darkgreen",
+     main = "Simulated 10Y maturity NPV option cost",
+     xlab = "NPV option cost")
+hist(EOS_matrix[,2], col = "blue2",
+     main = "Simulated 2Y maturity EOS, 99% alpha",
+     xlab = "EOS")
 summary(NPV_matrix)
+summary(EOS_matrix)
 npv_alphas_sim
