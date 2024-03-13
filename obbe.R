@@ -171,7 +171,7 @@ non_matured <- data %>% group_by(Client) %>%
   summarize(ind = n_distinct(Client)) %>%
   summarize(ncm = sum(ind))
 p_cancel <- (cancel / (non_cancel_matured + cancel))[[1]]
-p_cancel <- 0.1766
+p_cancel <- 0.1766 
 ######################################################################################################
 #--- Calculate probability of being type 1 (constant utilization)
 
@@ -394,7 +394,7 @@ NPV_matrix <- matrix(data = NA, nrow = N, ncol = 10)
 EOS_denom_matrix <- matrix(data = NA, nrow = N, ncol = 10)
 EOS_matrix <- matrix(data = NA, nrow = N, ncol = 10)
 npv_alphas_sim <- rep(NA, 10)
-
+pool_coef[2] <- pool_coef[2]*0.99
 
 for(j in 1:10){  
   FTP_0 <- ftp_2y[120] + 0.0001 * (j - 2)
@@ -403,7 +403,6 @@ for(j in 1:10){
   cancel_client <- rbinom(1,1, p_cancel) 
   tau <- 1
    
-  
   sim_joint <- vasi_joint_sim(jointpar_all, j*12, er[120], ftp_2y[120])
   ftp_sim_joint <- sim_joint[, 2]
   euri_sim_joint <- sim_joint[, 1]
@@ -419,17 +418,22 @@ for(j in 1:10){
   }
 }
 
-alpha <- 0.999
+alpha <- 0.99
+medians1 <- rep(NA,10)
 for(j in 1:10){
   npv_alphas_sim[j] <- (sort(-NPV_matrix[, j]))[ceiling(N * alpha)] 
   EOS_matrix[, j] <- npv_alphas_sim[j] * EOS_denom_matrix[, j]  
+  medians1[j] <- median(EOS_matrix[, j])
 }
 
-hist(NPV_matrix[,10], col = "darkgreen",
-     main = "Simulated 10Y maturity NPV option cost",
+(medians1 - medians) * 10^5
+
+
+hist(NPV_matrix[,1], col = "darkgreen",
+     main = "Simulated 1Y maturity NPV option cost",
      xlab = "NPV option cost")
-hist(EOS_matrix[,2], col = "blue2",
-     main = "Simulated 2Y maturity EOS, 99% alpha",
+hist(EOS_matrix[,1], col = "blue2",
+     main = "Simulated 1Y maturity EOS, 99% alpha",
      xlab = "EOS")
 summary(NPV_matrix)
 summary(EOS_matrix)
