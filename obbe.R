@@ -9,6 +9,8 @@ library("sn")
 library('vars')
 library('mixtools')
 library('fitdistrplus')
+library(corrplot)
+library(tidyverse)
 
 data <- readxl::read_xlsx("hypothetical_data_set.xlsx",2, skip = 1)
 data <- data[,2:9]
@@ -34,7 +36,8 @@ first_utilization <- data %>%
   group_by(Client) %>% summarize(first(`Used amount`))
 
 hist(first_utilization$`first(\`Used amount\`)`, main = "Histogram of first utilization in a contract", col = 'lightblue', xlab = "Used amount as fraction")
-
+mean(first_utilization$`first(\`Used amount\`)`)
+var(first_utilization$`first(\`Used amount\`)`)
 
 #(1) We see two types of clients:
 #       type 1: Use credit line once, don't touch again (~20% of clients)
@@ -152,7 +155,7 @@ covid_date <- as.Date("01-3-2020", "%d-%m-%Y")
 lag_nonconst_covid <- lag_nonconst %>% mutate(covid = if_else(`Reporting date` >= covid_date,1,0))
 
 #We observe no interaction between utiization and euribor / covid
-tobit_model_covid <- censReg(data = lag_nonconst_covid, `Lag used` ~ `Used amount` + covid + `6M` + `1Y` + `3Y.x` + `5Y.x` + `10Y.x`)
+tobit_model_covid <- censReg(data = lag_nonconst_covid, `Lag used` ~ `Used amount` + covid + `6M` + `1Y` + `3Y.x` + `5Y.x` + `10Y.x`, left = 0, right = 1)
 summary(tobit_model_covid)
 
 ######################################################################################################
@@ -190,10 +193,25 @@ p_typeone <- (n_non_single_var / (n_non_single_const + n_non_single_var))[[1]]
 #--- Check relation between risk factors using scatterplots, later extend to OLS/etc
 cancelled_summary <- data %>% filter(!is.na(`Cancellation date`)) %>% filter(`Reporting date` == `Cancellation date`)
 fraction <- cancelled_summary %>% group_by(Client) %>% summarize(fraction = ((as.numeric(`Cancellation date`)- as.numeric(`Start date`)) / (as.numeric(`Maturity date`) - as.numeric(`Start date`))))
-mean_util <- data %>% filter(!is.na(`Cancellation date`)) %>% group_by(Client) %>% summarize(mean = mean(`Used amount`))
-plot(y = fraction$fraction, x = cancelled_summary$`Used amount`)
-plot(y = fraction$fraction, x = mean_util$mean)
+mean_util <- data %>% filter(!is.na(`Cancellation date`)) %>% group_by(Client) %>% summarize(mean = var(`Used amount`))
+plot(y = fraction$fraction, x = cancelled_summary$`Used amount`, xlab = "Utilisation at cancellation date", ylab = "Survival rate of contract")
+plot(y = fraction$fraction, x = mean_util$mean, xlab = "Mean of utilisation of client", ylab = "Survival rate of contract")
+plot(y = fraction$fraction, x = mean_util$mean, xlab = "Variance of utilisation of client", ylab = "Survival rate of contract")
 hist(fraction$fraction)
+asd <- data[,c(7,9,10,11,12,13,14,15,16,17,18)]
+
+asd <- rename(asd, "Utilisation" = `Used amount`,
+       "6M Euribor" = `6M`,
+       "1Y Euribor" = `1Y`,
+       "3Y Euribor" = `3Y.x`,
+       "5Y Euribor" = `5Y.x`,
+       "10Y Euribor" = `10Y.x`,
+       "2Y FTP" = `2Y`,
+       "3Y FTP" = `3Y.y`,
+       "5Y FTP" = `5Y.y`,
+       "7Y FTP" = `7Y`,
+       "10Y FTP" = `10Y.y`)
+corrplot(cor(asd), method = "shade")
 
 x <- fraction$fraction
 beta_fit <- fitdistrplus::fitdist(x, "beta")
@@ -210,29 +228,28 @@ arima_model <- rep(0,18)
 error_counter <- rep(0,18)
 
 # for(i in 1:(length(n$Client))){
-#  util <- filtered_df %>% filter(Client == n$Client[i])
-#  util <- util$`Used amount`
-#  for(j in 1:18){
-#    
-#    tryCatch(
-#      {
-#        arima_model[j] <- AIC(arima(util, order = param_grid[j, ], method = "ML"))
-#        
-#      },
-#      error = function(e) {
-#        error_counter[j] <<- error_counter[j] + 1
-#        NA
-#      }
-#    )
+#   util <- filtered_df %>% filter(Client == n$Client[i])
+#   util <- util$`Used amount`
+#   for(j in 1:18){
+#     
+#     tryCatch(
+#       {
+#         arima_model[j] <- AIC(arima(util, order = param_grid[j, ], method = "ML"))
+# 
+#       },
+#       error = function(e) {
+#         error_counter[j] <<- error_counter[j] + 1
+#         NA
+#       }
+#     )
+#   }
+# 
+#   aic_vector <- aic_vector + arima_model
+# 
 #  }
-#  
-#  aic_vector <- aic_vector + arima_model
-#  
-# }
-
-#AR(1) model best on average
-#aic_vector <- aic_vector / (length(n$Client) - error_counter)
-#pos <- param_grid[which(aic_vector == min(aic_vector)), ]
+# #AR(1) model best on average
+# aic_vector <- aic_vector / (length(n$Client) - error_counter)
+# pos <- param_grid[which(aic_vector == min(aic_vector)), ]
 
 
 cancelled_data <- data %>% group_by(Client) %>% filter(!is.na(`Cancellation date`))
