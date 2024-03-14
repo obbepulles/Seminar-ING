@@ -50,9 +50,13 @@ ls_vasi_joint <- function(x, y){
   y2 <- y[2 : length(y)]
   modx <- lm(x2 ~x1)
   mody <- lm(y2 ~y1)
+  #kappa
   ax <- (modx$coefficients[2] - 1) * (-12)
+  #mu
   rx <- modx$coefficients[1] * 12 / ax
+  #sigma
   sx <- sqrt(var(modx$residuals)* 12)
+  #rho
   rho <- cor(modx$residuals, mody$residuals)
   ay <- (mody$coefficients[2] - 1) * -12
   ry <- mody$coefficients[1] * 12 / ay
