@@ -395,7 +395,6 @@ EOS_denom_matrix <- matrix(data = NA, nrow = N, ncol = 10)
 EOS_matrix <- matrix(data = NA, nrow = N, ncol = 10)
 npv_alphas_sim <- rep(NA, 10)
 
-jointpar_all[7] <- jointpar_all[7]*0.99
 
 for(j in 1:10){  
   FTP_0 <- ftp_2y[120] + 0.0001 * (j - 2)
