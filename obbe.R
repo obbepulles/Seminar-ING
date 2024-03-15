@@ -9,8 +9,8 @@ library("sn")
 library('vars')
 library('mixtools')
 library('fitdistrplus')
-library(corrplot)
-library(tidyverse)
+library('corrplot')
+library('tidyverse')
 
 data <- readxl::read_xlsx("hypothetical_data_set.xlsx",2, skip = 1)
 data <- data[,2:9]
@@ -173,7 +173,7 @@ non_matured <- data %>% group_by(Client) %>%
   filter((is.na(last(`Cancellation date`))) & (last(`Reporting date`) != first(`Maturity date`))) %>%
   summarize(ind = n_distinct(Client)) %>%
   summarize(ncm = sum(ind))
-p_cancel <- (cancel / (non_cancel_matured + cancel))[[1]]
+#From the result in the paper
 p_cancel <- 0.1766 
 ######################################################################################################
 #--- Calculate probability of being type 1 (constant utilization)

@@ -39,6 +39,6 @@ for(i in 1:11){
     summarize(PACF = list(pacf(`Used amount`, plot = FALSE)$acf[i]))
   corls <- as.numeric(pacf_results$PACF)
   pcaf_pvals[i] <- t.test(x = corls, alternative = "two.sided")$p.value
-  #hist(corls)
-  #Sys.sleep(4)
+  hist(corls)
+Sys.sleep(4)
 }
