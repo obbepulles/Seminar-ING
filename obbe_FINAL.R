@@ -39,23 +39,6 @@ hist(first_utilization$`first(\`Used amount\`)`, main = "Histogram of first util
 mean(first_utilization$`first(\`Used amount\`)`)
 var(first_utilization$`first(\`Used amount\`)`)
 
-#(1) We see two types of clients:
-#       type 1: Use credit line once, don't touch again (~20% of clients)
-#       type 2: Use credit line more often, high autocorrelation (Tobit model?, ~80% of clients)
-#(2) Initial amount used seems to be Unif(0,1)
-#(3) No ACF in dU
-#(4) For type 2 clients, dU seems to follow a normal distr around (-0.2;0.2) but has thick tails
-#    Ideas: Mixture of normals / Truncated normal + other distr for tails
-#    Problem: U in [0,1], thick tails make sense, could be a result of TOBIT (LIKELY!!!)
-
-#DGP idea: 
-#(1) U_0 ~ Unif[0,1]
-#(2) eps_t ~ Norm(mu,sigma^2)
-#(3) split up U_t into cases: U_t = 
-#     (i)    1              , if phi * U_{t-1} + eps_t >= 1
-#     (ii)   0              , if phi * U_{t-1} + eps_t <= 0
-#     (iii)  phi * U_{t-1} + eps_t, otherwise
-
 ######################################################################################################
 #--- First Tobit result, only use non-constant data and length > 5
 filtered_df <- data %>%
@@ -72,17 +55,8 @@ tobit_model <- censReg(Y ~ X, left = 0, right = 1, data = modeldata)
 summary(tobit_model)
 error <- modeldata$Y - modeldata$X * tobit_model$estimate[2] - tobit_model$estimate[1]
 
-#plot(density(error^2))
-#qqnorm(y = error)
-#qqline(y = error, col = 2)
 ######################################################################################################
-
-#--- Some random things for plotting purposes
-modes <- function(d){
-  i <- which(diff(sign(diff(d$y))) < 0) + 1
-  data.frame(x = d$x[i], y = d$y[i])
-}
-
+#--- Some things for plotting purposes, commented out right now
 #Plot some clients utilization over time
 # for(i in 0:120){
 # dataSubset <- data %>% filter(Client >= 10*i & Client < (10*(i+1)))
@@ -120,8 +94,6 @@ num_clients_filter <- data_nonconst %>% summarise(NumClients = n_distinct(Client
 num_clients <- data_fin_can %>% summarise(numClients = n_distinct(Client))
 
 #Probability of using line constantly (type 2)
-p <- num_clients_filter$NumClients / sum(num_clients$numClients)
-
 data_nonconst <- data_fin_can %>%
   group_by(Client) %>%
   filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 11)) %>%
@@ -142,11 +114,8 @@ qqnorm(y = error)
 qqline(y = error, col = 2)
 
 #Error analysis of tobit model
-c6 <- lag_nonconst %>% group_by(Client) %>% summarize(vars = var(na.omit(Error))) 
-plot(hist(c6$vars))
-
-x <- sqrt(c6$vars)
-mod2_weibull <- mixfit(x, ncomp = 3, family = 'weibull', max_iter = 10000)
+c6 <- lag_nonconst %>% group_by(Client) %>% summarize(vars = sqrt(var(na.omit(Error)))) 
+mod2_weibull <- mixfit(sqrt(c6$vars), ncomp = 3, family = 'weibull', max_iter = 10000)
 mod2_weibull
 plot(mod2_weibull)
 
@@ -217,6 +186,17 @@ x <- fraction$fraction
 beta_fit <- fitdistrplus::fitdist(x, "beta")
 beta_coef <- coef(beta_fit)
 ######################################################################################################
+data2 <- read_xlsx("hypothetical_data_set.xlsx", skip = 1)
+FTP <- as.data.frame(data2[, 2 : 6])
+DFTP <- as.data.frame(data2[ , 1 ])
+ER <- as.data.frame(data2[ , 9 : 13])
+DER <- as.data.frame(data2[ , 8])
+ftp_2y <- FTP[ , 1]
+er <- ER[, 2]
+#--functions writing here-----
+jointpar_all <- ls_vasi_joint(er, ftp_2y)
+######################################################################################################
+#--- Procedure for finding best average ARIMA(p,d,q) model
 filtered_df <- data %>%
   group_by(Client) %>%
   filter((length(unique(`Used amount`)) > 1) & (length(`Used amount`) > 23)) 
@@ -227,31 +207,34 @@ n <- filtered_df %>% summarize(x = n_distinct(Client))
 arima_model <- rep(0,18)
 error_counter <- rep(0,18)
 
-# for(i in 1:(length(n$Client))){
-#   util <- filtered_df %>% filter(Client == n$Client[i])
-#   util <- util$`Used amount`
-#   for(j in 1:18){
-#     
-#     tryCatch(
-#       {
-#         arima_model[j] <- AIC(arima(util, order = param_grid[j, ], method = "ML"))
-# 
-#       },
-#       error = function(e) {
-#         error_counter[j] <<- error_counter[j] + 1
-#         NA
-#       }
-#     )
-#   }
-# 
-#   aic_vector <- aic_vector + arima_model
-# 
-#  }
-# #AR(1) model best on average
-# aic_vector <- aic_vector / (length(n$Client) - error_counter)
-# pos <- param_grid[which(aic_vector == min(aic_vector)), ]
+#--- Minimum ARIMA procedure
+for(i in 1:(length(n$Client))){
+  util <- filtered_df %>% filter(Client == n$Client[i])
+  util <- util$`Used amount`
+  for(j in 1:18){
 
+    tryCatch(
+      {
+        arima_model[j] <- AIC(arima(util, order = param_grid[j, ], method = "ML"))
 
+      },
+      error = function(e) {
+        error_counter[j] <<- error_counter[j] + 1
+        NA
+      }
+    )
+  }
+
+  aic_vector <- aic_vector + arima_model
+
+ }
+#AR(1) model best on average
+aic_vector <- aic_vector / (length(n$Client) - error_counter)
+pos <- param_grid[which(aic_vector == min(aic_vector)), ]
+
+######################################################################################################
+#--- Option cost and EOS calculations start here
+#--- Some results require manual adjusting of values for plots, we indicate where this is the case
 cancelled_data <- data %>% group_by(Client) %>% filter(!is.na(`Cancellation date`))
 
 filtered_df <- (data %>%
@@ -269,12 +252,9 @@ cancelled_data <- cancelled_data %>% filter(`Maturity date` <= as.Date("31-12-20
 
 clients <- unique(as.numeric(cancelled_data$Client))
 
-varmod <- VAR(ts(rate_data[,2:6]),p = 1)
-varcoef <- coef(varmod)
-forecast <- predict(varmod, n.ahead = 120)
-euri_sim <- forecast[["fcst"]][["X1Y"]]
-euri_sim <- euri_sim[,1]
-
+sim_joint <- vasi_joint_sim(jointpar_all, 120, er[120], ftp_2y[120])
+ftp_sim_joint <- sim_joint[, 2]
+euri_sim_joint <- sim_joint[, 1]
 
 hs_costs <- rep(0,length(clients)) 
 hs_eos <- rep(0,length(clients))
@@ -283,17 +263,15 @@ client_var <- rep(0,length(clients))
 
 for(i in clients){
   client <- cancelled_data %>% filter(Client == i) 
-  hs_costs[count] <- hist_sim_option_cost_simple(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], client$`Cancellation date`[1], rate_data$`1Y`, euri_sim, ftp_data, pool_coef)
+  hs_costs[count] <- hist_sim_option_cost_simple(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], client$`Cancellation date`[1], rate_data$`1Y`, euri_sim_joint, ftp_data, pool_coef)
   client_var[count] <- var(diff(client$`Used amount`))
-  
   count <- count + 1
-  
 }
 
 hist(hs_costs , main = "Histogram of historical simulation option costs", xlab = "NPV Cost", col = 'green4')
 summary(hs_costs)
-#check hs_costs vs maturity in years
 
+#Check hs_costs vs maturity in years
 sum_data_cancel <- cancelled_data %>% group_by(Client) %>% slice(1) %>% ungroup()
 sum_data_cancel <- cbind(sum_data_cancel, hs_costs)
 names(sum_data_cancel)[19] <- "Option cost"
@@ -308,15 +286,17 @@ ggplot(sum_data_cancel, aes(x = Maturity, y = `Option cost`, color = factor(Matu
   labs(x = "Maturity", y = "Historical Option cost", color = "Maturity Length (Years)", title = "Historical Option Cost v.s. Maturity") +
   theme_minimal()
 
+#Get NPV for specified alpha quantile per maturity
 npv_alphas <- rep(0,10)
 for(i in 1:10){
   npv_alpha_iy <- sum_data_cancel %>% filter(Maturity == i) %>% reframe(sort(-`Option cost`))
   npv_alphas[i] <- npv_alpha_iy[ceiling(0.90*length(npv_alpha_iy[[1]])),1][1]
 }
 
-#npv_alpha <- sort(-hs_costs)[ceiling(0.99 * length(hs_costs))]
+npv_alphas
 eos <- rep(0, length(hs_costs))
 
+#This part calculates historical EOS
 count <- 1
 for(i in clients){
   client <- cancelled_data %>% filter(Client == i) 
@@ -340,6 +320,7 @@ hist(eos)
 sum_data_cancel <- cbind(sum_data_cancel, eos)
 names(sum_data_cancel)[20] <- "EOS"
 
+#Plots which serve the analysis
 ggplot(sum_data_cancel, aes(x = Client, y = `EOS`, color = factor(Maturity))) +
   geom_point() +
   labs(x = "Client", y = "EOS", color = "Maturity Length (Years)") +
@@ -373,7 +354,8 @@ par(mfrow=c(2,2))
 set.seed(1)
 data_ongoing <- data %>% group_by(Client) %>% 
   filter(last(`Reporting date`) != last(`Maturity date`)) %>% 
-  filter(is.na(`Cancellation date`) & `Maturity` == 3)
+  #To replicate paper results, change the `Maturity` value in the line below to be between 1 and 10 and rerun everything from line 354 to 383
+  filter(is.na(`Cancellation date`) & `Maturity` == 1)
 ongoing_clients <- unique(as.numeric(data_ongoing$Client))
 ongoing_option_cost_df <- matrix(0,nrow = 100, ncol = length(ongoing_clients))
 ongoing_eos_df <- matrix(0,nrow = 100, ncol = length(ongoing_clients))
@@ -386,7 +368,6 @@ for(i in ongoing_clients){
     ongoing_option_cost_df[j, count] <- x[[1]] * 10^6
     ongoing_eos_df[j, count] <- x[[2]] / 10^6
   }
-  #ongoing_option_cost(client$`Used amount`, client$`Start date`[1], client$`Maturity date`[1], rate_data$`1Y`, euri_sim, ftp_data, ftp_sim, pool_coef, p_cancel, p_typeone, beta_coef[1], beta_coef[2], mod2_weibull)
   count <- count + 1
 }
 
@@ -395,15 +376,14 @@ summary(as.vector(ongoing_option_cost_df))
 summary(as.vector(ongoing_eos_df*NPV_alpha_ongoing))
   NPV_alpha_ongoing
 hist(ongoing_option_cost_df, col = "darkgreen",
-     main = "Ongoing 10Y maturity NPV option cost",
+     main = "Ongoing 1Y maturity NPV option cost",
      xlab = "NPV option cost")
 hist(ongoing_eos_df*NPV_alpha_ongoing, col = "blue2",
-     main = "Ongoing 10Y maturity EOS, 99% alpha",
+     main = "Ongoing 1Y maturity EOS, 99% alpha",
      xlab = "EOS")
-number_per_year <- c(12,23,28,43,57,62,71,87,98,105)
-sum(number_per_year)
 ######################################################################################################
 #--- Simulation of completely hypothetical clients with a completely random path for each risk driver for each client
+#--- Manually change values to get medians etc for sensitivity analysis and the plots per maturity.
 par(mfrow=c(5,2))
 set.seed(1)
 N <- 20000
@@ -412,7 +392,8 @@ EOS_denom_matrix <- matrix(data = NA, nrow = N, ncol = 10)
 EOS_matrix <- matrix(data = NA, nrow = N, ncol = 10)
 npv_alphas_sim <- rep(NA, 10)
 
-
+#For the sensitivity analysis, we manually changed the values for each parameter and stored the median EOS 
+#Into new objects called `medians1`
 for(j in 1:10){  
   FTP_0 <- ftp_2y[120] + 0.0001 * (j - 2)
   for(i in 1:N){
@@ -435,17 +416,18 @@ for(j in 1:10){
   }
 }
 
-alpha <- 0.99
-medians1 <- rep(NA,10)
+alpha <- 0.95
+medians <- rep(NA,10)
 for(j in 1:10){
   npv_alphas_sim[j] <- (sort(-NPV_matrix[, j]))[ceiling(N * alpha)] 
   EOS_matrix[, j] <- npv_alphas_sim[j] * EOS_denom_matrix[, j]  
-  medians1[j] <- median(EOS_matrix[, j])
+  medians[j] <- median(EOS_matrix[, j])
 }
 
-(medians1 - medians) * 10^5
+#This calculates the difference in medians for the sensitivity analysis, manually adjusted
+#(medians1 - medians) * 10^5
 
-
+#Plots
 hist(NPV_matrix[,1], col = "darkgreen",
      main = "Simulated 1Y maturity NPV option cost",
      xlab = "NPV option cost")
@@ -455,3 +437,4 @@ hist(EOS_matrix[,1], col = "blue2",
 summary(NPV_matrix)
 summary(EOS_matrix)
 npv_alphas_sim
+######################################################################################################
