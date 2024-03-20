@@ -22,6 +22,7 @@ rate_data <- readxl::read_xlsx("hypothetical_data_set.xlsx",1, skip = 1, range =
 ftp_data <- readxl::read_xlsx("hypothetical_data_set.xlsx",1, skip = 1, range = "A2:F122")
 ftp_2y <- as.vector(unname(ftp_data[, 2]))[[1]]
 
+
 data <- data %>% mutate(month_year = format(`Reporting date`, "%m-%Y")) 
 rate_data <- rate_data %>% mutate(month_year = format(`Date`, "%m-%Y")) 
 ftp_data <- ftp_data %>% mutate(month_year = format(`Date`, "%m-%Y"))
@@ -29,6 +30,15 @@ ftp_data <- ftp_data %>% mutate(month_year = format(`Date`, "%m-%Y"))
 merged_df <- inner_join(data, rate_data, by = "month_year")
 merged_df <- inner_join(merged_df, ftp_data, by = "month_year")
 data <- merged_df[,c(-9,-10,-16)]
+#
+plot(x = rate_data$Date, y = rate_data$`6M`, type = 'l', col = 'blue2', 
+     xlab = "Time", ylab = "Euribor Rate", ylim = c(-0.0075,0.03),
+     main = "Euribor Rates")
+lines(x = rate_data$Date, y = rate_data$`1Y`, type = 'l', col = 'red3')
+lines(x = rate_data$Date, y = rate_data$`3Y`, type = 'l', col = 'green2')
+lines(x = rate_data$Date, y = rate_data$`5Y`, type = 'l', col = 'orange2')
+lines(x = rate_data$Date, y = rate_data$`10Y`, type = 'l', col = 'purple3')
+legend("topright", legend = colnames(rate_data[,2:6]), col = c("blue2", "red3", "green2", "orange2", "purple3"), lty = 1, title = "Maturity")
 
 #Initial use seems to follow uniform distr
 first_utilization <- data %>%
@@ -58,17 +68,17 @@ error <- modeldata$Y - modeldata$X * tobit_model$estimate[2] - tobit_model$estim
 #--- Some things for plotting purposes, commented out right now
 #Plot some clients utilization over time
 # for(i in 0:120){
-# dataSubset <- data %>% filter(Client >= 10*i & Client < (10*(i+1)))
-# 
-# plot <- ggplot(dataSubset, aes(x = as.Date(`Reporting date`,"%d-%m-%Y"), y = `Used amount`, group = Client, color = as.factor(Client))) +
-#   geom_line() +
-#   geom_point() +
-#   labs(title = "Utilization Time Series for a subset of clients",
-#        x = "Client",
-#        y = "Used Amount") +
-#   theme_minimal()
-# print(plot)
-# Sys.sleep(4)
+ dataSubset <- data %>% filter(Client >= 295 & Client < 300)
+ 
+ plot <- ggplot(dataSubset, aes(x = as.Date(`Reporting date`,"%d-%m-%Y"), y = `Used amount`, group = Client, color = as.factor(Client))) +
+   geom_line() +
+   geom_point() +
+   labs(title = "Utilization Time Series for a subset of clients",
+        x = "Time",
+        y = "Used Amount", color = "Clients") +
+   theme_minimal()
+ print(plot)
+ #Sys.sleep(4)
 # }
 
 #--- Autocorrealtion part of the analysis of utilisation
@@ -217,7 +227,7 @@ x <- fraction$fraction
 beta_fit <- fitdistrplus::fitdist(x, "beta")
 beta_coef <- coef(beta_fit)
 ######################################################################################################
-data2 <- read_xlsx("hypothetical_data_set.xlsx", skip = 1)
+data2 <- readxl::read_xlsx("hypothetical_data_set.xlsx", skip = 1)
 FTP <- as.data.frame(data2[, 2 : 6])
 DFTP <- as.data.frame(data2[ , 1 ])
 ER <- as.data.frame(data2[ , 9 : 13])
@@ -239,29 +249,29 @@ arima_model <- rep(0,18)
 error_counter <- rep(0,18)
 
 #--- Minimum ARIMA procedure
-for(i in 1:(length(n$Client))){
-  util <- filtered_df %>% filter(Client == n$Client[i])
-  util <- util$`Used amount`
-  for(j in 1:18){
-
-    tryCatch(
-      {
-        arima_model[j] <- AIC(arima(util, order = param_grid[j, ], method = "ML"))
-
-      },
-      error = function(e) {
-        error_counter[j] <<- error_counter[j] + 1
-        NA
-      }
-    )
-  }
-
-  aic_vector <- aic_vector + arima_model
-
- }
+# for(i in 1:(length(n$Client))){
+#   util <- filtered_df %>% filter(Client == n$Client[i])
+#   util <- util$`Used amount`
+#   for(j in 1:18){
+# 
+#     tryCatch(
+#       {
+#         arima_model[j] <- AIC(arima(util, order = param_grid[j, ], method = "ML"))
+# 
+#       },
+#       error = function(e) {
+#         error_counter[j] <<- error_counter[j] + 1
+#         NA
+#       }
+#     )
+#   }
+# 
+#   aic_vector <- aic_vector + arima_model
+#
+# }
 #AR(1) model best on average
-aic_vector <- aic_vector / (length(n$Client) - error_counter)
-pos <- param_grid[which(aic_vector == min(aic_vector)), ]
+# aic_vector <- aic_vector / (length(n$Client) - error_counter)
+# pos <- param_grid[which(aic_vector == min(aic_vector)), ]
 
 ######################################################################################################
 #--- Option cost and EOS calculations start here
